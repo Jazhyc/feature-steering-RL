@@ -842,6 +842,7 @@ dependencies = [
     { name = "nnsight" },
     { name = "sae-lens" },
     { name = "torch" },
+    { name = "transformer-lens" },
     { name = "transformers" },
 ]
 
@@ -851,6 +852,7 @@ requires-dist = [
     { name = "nnsight", specifier = ">=0.4.6" },
     { name = "sae-lens", specifier = ">=5.10.5" },
     { name = "torch", specifier = ">=2.7.0" },
+    { name = "transformer-lens", specifier = ">=2.15.4" },
     { name = "transformers", specifier = ">=4.52.4" },
 ]
 
