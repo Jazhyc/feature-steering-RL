@@ -21,7 +21,7 @@ uv add <package_name>
 
 ## Running the project
 
-To run the project, you can use uv directly:
+To run the project, you can use uv:
 ```bash
 uv run python <script_name>
 ```
