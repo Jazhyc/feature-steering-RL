@@ -42,10 +42,6 @@ class SAEAdapter(SAE):
 
         self.fusion_mode = fusion_mode
         assert self.fusion_mode in ["additive", "multiplicative"]
-
-        # Create hook points for the adapter to cache activations
-        self.hook_adapter_pre = HookPoint()
-        self.hook_adapter_post = HookPoint()
         
         # The adapter uses the same activation function as the base SAE.
         self.adapter_activation = get_activation_fn(
@@ -61,6 +57,14 @@ class SAEAdapter(SAE):
         self._initialize_adapter_weights()
         self.adapter_layers.to(self.device, self.dtype)
         self.adapter_activation.to(self.device, self.dtype)
+        
+        # Create hook points for the adapter to cache activations
+        self.hook_sae_adapter_pre = HookPoint()
+        self.hook_sae_adapter_post = HookPoint()
+        self.hook_sae_fusion = HookPoint()
+        
+        # Add hooks to the hook manager
+        self.setup()
         
     def _initialize_adapter_weights(self):
         """Applies Kaiming uniform initialization to the adapter's layers."""
@@ -87,11 +91,11 @@ class SAEAdapter(SAE):
             
         # Process through the final layer to get pre-activations
         pre_act = self.adapter_layers[-1](adapter_in)
-        self.hook_adapter_pre(pre_act)
+        self.hook_sae_adapter_pre(pre_act)
         
         # Apply final activation and post-activation hook
         post_act = self.adapter_activation(pre_act)
-        self.hook_adapter_post(post_act)
+        self.hook_sae_adapter_post(post_act)
         
         return post_act
 
@@ -109,6 +113,7 @@ class SAEAdapter(SAE):
             modulated_acts = feature_acts * steering_vector
         else:
             modulated_acts = feature_acts + steering_vector
+        self.hook_sae_fusion(modulated_acts)
             
         # Decode
         sae_out = self.decode(modulated_acts)
