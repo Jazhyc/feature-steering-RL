@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 import json
-from typing import Literal, List, Dict, Any, Optional
+from typing import Literal, List, Any, Optional
 from sae_lens import SAE, SAEConfig
 from sae_lens.sae import _disable_hooks, get_activation_fn
 from pathlib import Path
@@ -91,11 +91,13 @@ class SAEAdapter(SAE):
             
         # Process through the final layer to get pre-activations
         pre_act = self.adapter_layers[-1](adapter_in)
-        self.hook_sae_adapter_pre(pre_act)
+        
+        # We need the LHS in case of interventions
+        pre_act = self.hook_sae_adapter_pre(pre_act)
         
         # Apply final activation and post-activation hook
         post_act = self.adapter_activation(pre_act)
-        self.hook_sae_adapter_post(post_act)
+        post_act = self.hook_sae_adapter_post(post_act)
         
         return post_act
 
@@ -113,7 +115,7 @@ class SAEAdapter(SAE):
             modulated_acts = feature_acts * steering_vector
         else:
             modulated_acts = feature_acts + steering_vector
-        self.hook_sae_fusion(modulated_acts)
+        modulated_acts = self.hook_sae_fusion(modulated_acts)
             
         # Decode
         sae_out = self.decode(modulated_acts)
