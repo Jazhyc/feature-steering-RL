@@ -12,6 +12,8 @@ class HookedModel(nn.Module):
     This module steers the LLM's activations through the SAEAdapter at a
     specified layer, making it compatible with training libraries like TRL.
     For examining features, it might be better to use the SAEAdapter directly.
+    
+    * We might need to add additional functions for integration with LM Eval here
     """
     def __init__(self, model: HookedTransformer, sae_adapter: SAEAdapter):
         super().__init__()
