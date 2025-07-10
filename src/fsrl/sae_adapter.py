@@ -3,6 +3,8 @@ from torch import nn
 from typing import Literal, List, Dict, Any, Optional
 
 from sae_lens import SAE, SAEConfig
+from sae_lens.sae import _disable_hooks
+
 from transformer_lens.hook_points import HookPoint
 
 class SAEAdapter(SAE):
@@ -16,9 +18,9 @@ class SAEAdapter(SAE):
     def __init__(
         self,
         cfg: SAEConfig,
-        use_error_term: bool = False,
+        use_error_term: bool = True,
         adapter_layers: Optional[List[int]] = None,
-        fusion_mode: Literal["additive", "multiplicative"] = "multiplicative"
+        fusion_mode: Literal["additive", "multiplicative"] = "additive"
     ):
         """
         Initializes the SAEAdapter.
@@ -63,9 +65,6 @@ class SAEAdapter(SAE):
         # Create an extra hook point for the adapter output
         self.hook_sae_adapter = HookPoint()
         
-        # Point where encoder and adapter features are fused
-        self.hook_sae_fusion = HookPoint()
-        
     def _initialize_adapter_weights(self):
         """
         Applies Kaiming uniform initialization to the adapter's linear layers
@@ -101,17 +100,18 @@ class SAEAdapter(SAE):
         else:
             modulated_acts = feature_acts + steering_vector
             
-        self.hook_sae_fusion(modulated_acts)
-            
         # Decode the modulated features
         sae_out = self.decode(modulated_acts)
         
-        # Is this important right now?
-        if self.use_error_term:
-            raise NotImplementedError(
-                "Error term not implemented in SAEAdapter. "
-                "Please implement if needed."
-            )
+        # Readds the clean SAE reconstruction error
+        # In the original implementation, this would yield an identity function which can then be manipulated using hooks
+        # In our case, the adapter itself manipulates the features, so we do need to manipulate the SAE afterwards using hooks
+        with torch.no_grad():
+            with _disable_hooks(self):
+                feature_acts_clean = self.encode(x)
+                x_reconstruct_clean = self.decode(feature_acts_clean)
+            sae_error = self.hook_sae_error(x - x_reconstruct_clean)
+            sae_out = sae_out + sae_error
             
         return self.hook_sae_output(sae_out)
 
