@@ -1,11 +1,13 @@
 import torch
 from torch import nn
+import json
 from typing import Literal, List, Dict, Any, Optional
-
 from sae_lens import SAE, SAEConfig
-from sae_lens.sae import _disable_hooks
-
+from sae_lens.sae import _disable_hooks, get_activation_fn
+from pathlib import Path
+from safetensors.torch import save_file, load_file
 from transformer_lens.hook_points import HookPoint
+
 
 class SAEAdapter(SAE):
     """
@@ -29,88 +31,95 @@ class SAEAdapter(SAE):
             cfg: Configuration for the base SAE.
             use_error_term: If True, adds the SAE's reconstruction error to the output.
             adapter_layers: Hidden layer sizes for an MLP adapter. If None,
-                            defaults to a single linear layer.
+                            defaults to a single linear layer with a ReLU activation.
             fusion_mode: How to combine features and steering vector
                          ('additive' or 'multiplicative').
         """
-        # Initialize the parent SAE
         super(SAEAdapter, self).__init__(cfg, use_error_term=use_error_term)
 
-        # Freeze the base SAE parameters
         for param in self.parameters():
             param.requires_grad = False
 
         self.fusion_mode = fusion_mode
         assert self.fusion_mode in ["additive", "multiplicative"]
 
-        # Define the trainable adapter network
-        if adapter_layers is None or not adapter_layers:
-            # Default: a single linear layer
-            self.adapter = nn.Linear(self.cfg.d_in, self.cfg.d_sae)
-        else:
-            # Optional: a deeper MLP
-            adapter_mlp_layers = []
-            current_dim = self.cfg.d_in
-            for hidden_dim in adapter_layers:
-                adapter_mlp_layers.append(nn.Linear(current_dim, hidden_dim))
-                adapter_mlp_layers.append(nn.ReLU())
-                current_dim = hidden_dim
-            adapter_mlp_layers.append(nn.Linear(current_dim, self.cfg.d_sae))
-            self.adapter = nn.Sequential(*adapter_mlp_layers)
-            
-        # Ensure adapter is on the correct device and dtype
-        self.adapter.to(self.device, self.dtype)
-        self._initialize_adapter_weights()
+        # Create hook points for the adapter to cache activations
+        self.hook_adapter_pre = HookPoint()
+        self.hook_adapter_post = HookPoint()
         
-        # Create an extra hook point for the adapter output
-        self.hook_sae_adapter = HookPoint()
+        # The adapter uses the same activation function as the base SAE.
+        self.adapter_activation = get_activation_fn(
+            cfg.activation_fn_str, **cfg.activation_fn_kwargs
+        )
+        
+        # Define the adapter's layers, defaulting to a single linear layer 
+        self.adapter_layers = nn.ModuleList()
+        layer_dims = [self.cfg.d_in] + (adapter_layers or []) + [self.cfg.d_sae]
+        for i in range(len(layer_dims) - 1):
+            self.adapter_layers.append(nn.Linear(layer_dims[i], layer_dims[i+1]))
+        
+        self._initialize_adapter_weights()
+        self.adapter_layers.to(self.device, self.dtype)
+        self.adapter_activation.to(self.device, self.dtype)
         
     def _initialize_adapter_weights(self):
+        """Applies Kaiming uniform initialization to the adapter's layers."""
+        for layer in self.adapter_layers:
+            nn.init.kaiming_uniform_(layer.weight, nonlinearity="relu")
+            if layer.bias is not None:
+                nn.init.zeros_(layer.bias)
+
+    def get_steering_vector(self, x: torch.Tensor) -> torch.Tensor:
         """
-        Applies Kaiming uniform initialization to the adapter's linear layers
-        and zeros to its biases, mirroring the base SAE's initialization.
+        Computes the steering vector from the adapter for a given input.
+
+        Args:
+            x: The input activation vector (e.g., from the LLM's residual stream).
+
+        Returns:
+            The computed steering vector.
         """
+        adapter_in = x.to(self.dtype)
         
-        if isinstance(self.adapter, nn.Sequential):
-            # Handle MLP case
-            for module in self.adapter:
-                if isinstance(module, nn.Linear):
-                    nn.init.kaiming_uniform_(module.weight, nonlinearity="relu")
-                    if module.bias is not None:
-                        nn.init.zeros_(module.bias)
-        elif isinstance(self.adapter, nn.Linear):
-            # Handle single linear layer case (which does not have an activation function)
-            nn.init.kaiming_uniform_(self.adapter.weight)
-            if self.adapter.bias is not None:
-                nn.init.zeros_(self.adapter.bias)
+        # Pass through hidden layers (if any) with ReLU activations
+        for layer in self.adapter_layers[:-1]:
+            adapter_in = self.adapter_activation(layer(adapter_in))
+            
+        # Process through the final layer to get pre-activations
+        pre_act = self.adapter_layers[-1](adapter_in)
+        self.hook_adapter_pre(pre_act)
+        
+        # Apply final activation and post-activation hook
+        post_act = self.adapter_activation(pre_act)
+        self.hook_adapter_post(post_act)
+        
+        return post_act
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass: modulates SAE features with the adapter's steering vector."""
         
-        # SAE Path (Frozen): Get original feature activations
+        # SAE Path (Frozen)
         feature_acts = self.encode(x)
         
-        # Adapter Path (Trainable): Get steering vector
-        steering_vector = self.adapter(x.to(self.dtype))
-        self.hook_sae_adapter(steering_vector)
+        # Adapter Path (Trainable) - Now abstracted
+        steering_vector = self.get_steering_vector(x)
         
-        # Fusion: Modulate features
+        # Fusion
         if self.fusion_mode == "multiplicative":
             modulated_acts = feature_acts * steering_vector
         else:
             modulated_acts = feature_acts + steering_vector
             
-        # Decode the modulated features
+        # Decode
         sae_out = self.decode(modulated_acts)
         
-        # Readds the clean SAE reconstruction error
-        # In the original implementation, this would yield an identity function which can then be manipulated using hooks
-        # In our case, the adapter itself manipulates the features, so we do need to manipulate the SAE afterwards using hooks
-        with torch.no_grad():
-            with _disable_hooks(self):
-                feature_acts_clean = self.encode(x)
-                x_reconstruct_clean = self.decode(feature_acts_clean)
-            sae_error = self.hook_sae_error(x - x_reconstruct_clean)
+        # Add Reconstruction Error for clean intervention
+        if self.use_error_term:
+            with torch.no_grad():
+                with _disable_hooks(self):
+                    feature_acts_clean = self.encode(x)
+                    x_reconstruct_clean = self.decode(feature_acts_clean)
+                sae_error = self.hook_sae_error(x - x_reconstruct_clean)
             sae_out = sae_out + sae_error
             
         return self.hook_sae_output(sae_out)
@@ -126,24 +135,68 @@ class SAEAdapter(SAE):
     ) -> tuple["SAEAdapter", dict[str, Any], torch.Tensor | None]:
         """Loads a pretrained SAE and wraps it in an SAEAdapter."""
         
-        # Temporarily load original SAE to get its config and weights
         sae_temp, cfg_dict, sparsity = SAE.from_pretrained(
             release, sae_id, device=device, force_download=force_download
         )
         state_dict = sae_temp.state_dict()
-        del sae_temp # free memory
+        del sae_temp
 
-        # Instantiate our adapter class with the loaded config
         sae_adapter_instance = cls(
             cfg=SAEConfig.from_dict(cfg_dict), 
             **adapter_kwargs
         )
         
-        # Load the frozen weights, ignoring missing adapter keys
         sae_adapter_instance.load_state_dict(state_dict, strict=False)
         
         return sae_adapter_instance, cfg_dict, sparsity
 
     def get_trainable_parameters(self) -> List[nn.Parameter]:
         """Returns the adapter's trainable parameters for an optimizer."""
-        return list(self.adapter.parameters())
+        return list(self.adapter_layers.parameters())
+    
+    def save_model(self, path: str | Path):
+        """Saves the adapter's state_dict and JSON config to a directory."""
+        path = Path(path)
+        path.mkdir(parents=True, exist_ok=True)
+
+        # Save weights
+        weights_path = path / "sae_weights.safetensors"
+        save_file(self.state_dict(), weights_path)
+
+        # Create and save augmented config
+        config = self.cfg.to_dict()
+        config["fusion_mode"] = self.fusion_mode
+        config["adapter_layers"] = [
+            layer.out_features for layer in self.adapter_layers[:-1]
+        ]
+        
+        config_path = path / "sae_config.json"
+        with open(config_path, 'w') as f:
+            json.dump(config, f, indent=4)
+            
+        print(f"SAEAdapter saved to {path}")
+        
+    @classmethod
+    def from_disk(cls, path: str | Path, device: str = "cpu") -> "SAEAdapter":
+        """Loads a saved SAEAdapter from a directory."""
+        path = Path(path)
+        
+        # Load config and extract adapter-specific arguments
+        with open(path / "sae_config.json", 'r') as f:
+            config = json.load(f)
+            
+        adapter_kwargs = {
+            "fusion_mode": config.pop("fusion_mode", "additive"),
+            "adapter_layers": config.pop("adapter_layers", None),
+        }
+        config['device'] = device
+
+        # Create instance from config
+        instance = cls(cfg=SAEConfig.from_dict(config), **adapter_kwargs)
+        
+        # Load weights
+        state_dict = load_file(path / "sae_weights.safetensors", device=device)
+        instance.load_state_dict(state_dict)
+        
+        print(f"SAEAdapter loaded from {path}")
+        return instance

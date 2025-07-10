@@ -1,0 +1,30 @@
+{
+    "architecture": "standard",
+    "d_in": 768,
+    "d_sae": 24576,
+    "dtype": "torch.float32",
+    "device": "cuda",
+    "model_name": "gpt2-small",
+    "hook_name": "blocks.7.hook_resid_pre",
+    "hook_layer": 7,
+    "hook_head_index": null,
+    "activation_fn_str": "relu",
+    "activation_fn_kwargs": {},
+    "apply_b_dec_to_input": true,
+    "finetuning_scaling_factor": false,
+    "sae_lens_training_version": null,
+    "prepend_bos": true,
+    "dataset_path": "Skylion007/openwebtext",
+    "dataset_trust_remote_code": true,
+    "context_size": 128,
+    "normalize_activations": "none",
+    "neuronpedia_id": "gpt2-small/7-res-jb",
+    "model_from_pretrained_kwargs": {
+        "center_writing_weights": true
+    },
+    "seqpos_slice": [
+        null
+    ],
+    "fusion_mode": "additive",
+    "adapter_layers": []
+}
