@@ -51,7 +51,6 @@ class HookedModel(nn.Module):
     def run_with_cache(
         self, 
         tokens: torch.Tensor, 
-        use_steering: bool = True,
         **kwargs
     ) -> Tuple[torch.Tensor, ActivationCache]:
         """
@@ -60,14 +59,13 @@ class HookedModel(nn.Module):
 
         Args:
             tokens: Input tokens.
-            use_steering: If True, applies the SAEAdapter steering.
             **kwargs: Additional arguments for the model's forward pass.
 
         Returns:
             A tuple of (logits, combined_cache), where the cache contains
             activations from both the LLM and the SAEAdapter.
         """
-        if not use_steering:
+        if not self.steering_active:
             return self.model.run_with_cache(tokens, **kwargs)
 
         sae_cache_storage = {}
