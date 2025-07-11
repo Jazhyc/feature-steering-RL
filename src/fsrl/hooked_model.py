@@ -1,44 +1,91 @@
 import torch
 from torch import nn
 from transformer_lens import HookedTransformer
-from typing import List
+from typing import List, Tuple
+from transformer_lens.ActivationCache import ActivationCache
 
 from .sae_adapter import SAEAdapter
 
 class HookedModel(nn.Module):
     """
-    Wraps a base LLM and an SAEAdapter for training via hooks.
+    Wraps a base LLM and an SAEAdapter for training and analysis.
     
-    This module steers the LLM's activations through the SAEAdapter at a
-    specified layer, making it compatible with training libraries like TRL.
-    For examining features, it might be better to use the SAEAdapter directly.
-    
-    * We might need to add additional functions for integration with LM Eval here
+    This module can be run with or without steering enabled and provides
+    a method to cache both LLM and SAE internal activations.
     """
     def __init__(self, model: HookedTransformer, sae_adapter: SAEAdapter):
         super().__init__()
         self.model = model
         self.sae_adapter = sae_adapter
         self.hook_name = self.sae_adapter.cfg.hook_name
+        self.steering_active = True  # Steering is on by default
 
-        # Freeze the base LLM; adapter's trainable part remains active.
         for param in self.model.parameters():
             param.requires_grad = False
             
-    def forward(self, tokens: torch.Tensor, **kwargs):
-        """Performs a forward pass through the LLM, steered by the SAEAdapter."""
+    def enable_steering(self):
+        """Activates the SAEAdapter intervention for subsequent forward passes."""
+        self.steering_active = True
+
+    def disable_steering(self):
+        """Deactivates the SAEAdapter, making the model behave like the base LLM."""
+        self.steering_active = False
+
+    def forward(self, tokens: torch.Tensor, **kwargs) -> torch.Tensor:
+        """
+        Performs a forward pass. Runs with or without steering based on current state.
+        This method is optimized for training loops.
+        """
+        if not self.steering_active:
+            return self.model(tokens, **kwargs)
 
         def steering_hook(activation_value, hook):
-            # This hook function replaces the original activation with the
-            # steered output from the SAEAdapter.
             return self.sae_adapter(activation_value)
 
-        # run_with_hooks executes the model, applying the hook at the target layer.
         return self.model.run_with_hooks(
             tokens,
             fwd_hooks=[(self.hook_name, steering_hook)],
             **kwargs
         )
+
+    def run_with_cache(
+        self, 
+        tokens: torch.Tensor, 
+        use_steering: bool = True,
+        **kwargs
+    ) -> Tuple[torch.Tensor, ActivationCache]:
+        """
+        Runs a forward pass and returns final logits and a combined activation cache.
+        This method is designed for analysis.
+
+        Args:
+            tokens: Input tokens.
+            use_steering: If True, applies the SAEAdapter steering.
+            **kwargs: Additional arguments for the model's forward pass.
+
+        Returns:
+            A tuple of (logits, combined_cache), where the cache contains
+            activations from both the LLM and the SAEAdapter.
+        """
+        if not use_steering:
+            return self.model.run_with_cache(tokens, **kwargs)
+
+        sae_cache_storage = {}
+        def hook_fn_with_cache(activation_value, hook):
+            sae_output, sae_cache = self.sae_adapter.run_with_cache(activation_value)
+            sae_cache_storage.update(sae_cache)
+            return sae_output
+
+        logits, llm_cache = self.model.run_with_cache(
+            tokens,
+            fwd_hooks=[(self.hook_name, hook_fn_with_cache)],
+            **kwargs
+        )
+        
+        # Merge the SAE cache into the LLM's cache
+        llm_cache.update(sae_cache_storage)
+        
+        return logits, llm_cache
 
     def get_trainable_parameters(self) -> List[nn.Parameter]:
         """Helper to get only the adapter's trainable parameters for the optimizer."""
