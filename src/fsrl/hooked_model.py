@@ -1,8 +1,10 @@
 import torch
 from torch import nn
 from transformer_lens import HookedTransformer
+from transformers import AutoConfig
 from typing import List, Tuple
 from transformer_lens.ActivationCache import ActivationCache
+from transformers.modeling_outputs import CausalLMOutput
 
 from .sae_adapter import SAEAdapter
 
@@ -12,13 +14,17 @@ class HookedModel(nn.Module):
     
     This module can be run with or without steering enabled and provides
     a method to cache both LLM and SAE internal activations.
+    
+    #* Maybe we should add one more flag to only use the Base SAE without steering?
     """
     def __init__(self, model: HookedTransformer, sae_adapter: SAEAdapter):
         super().__init__()
         self.model = model
+        self.config = AutoConfig.from_pretrained(model.cfg.model_name)
         self.sae_adapter = sae_adapter
         self.hook_name = self.sae_adapter.cfg.hook_name
         self.steering_active = True  # Steering is on by default
+        self.warnings_issued = dict()
 
         for param in self.model.parameters():
             param.requires_grad = False
@@ -42,11 +48,13 @@ class HookedModel(nn.Module):
         def steering_hook(activation_value, hook):
             return self.sae_adapter(activation_value)
 
-        return self.model.run_with_hooks(
+        final_logits = self.model.run_with_hooks(
             tokens,
             fwd_hooks=[(self.hook_name, steering_hook)],
             **kwargs
         )
+        
+        return CausalLMOutput(logits=final_logits)
 
     def run_with_cache(
         self, 

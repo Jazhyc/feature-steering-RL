@@ -200,3 +200,7 @@ cython_debug/
 *.ckpt
 *.pt
 *.pth
+
+# Logs
+logs/*
+!logs/.gitkeep

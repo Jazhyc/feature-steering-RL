@@ -104,29 +104,31 @@ class SAEAdapter(SAE):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass: modulates SAE features with the adapter's steering vector."""
         
-        # SAE Path (Frozen)
+        # SAE Path (Frozen), we reuse variables for memory efficiency
+        # Feature vector is very large
         feature_acts = self.encode(x)
         
-        # Adapter Path (Trainable) - Now abstracted
+        # Compute Error for clean intervention
+        # Error based on clean (regular path)
+        if self.use_error_term:
+            with _disable_hooks(self):
+                reconstruct_clean = self.decode(feature_acts)
+            sae_error = self.hook_sae_error(x - reconstruct_clean.detach())
+        
+        # Adapter Path (Trainable)
         steering_vector = self.get_steering_vector(x)
         
         # Fusion
         if self.fusion_mode == "multiplicative":
-            modulated_acts = feature_acts * steering_vector
+            feature_acts = feature_acts * steering_vector
         else:
-            modulated_acts = feature_acts + steering_vector
-        modulated_acts = self.hook_sae_fusion(modulated_acts)
+            feature_acts = feature_acts + steering_vector
+        feature_acts = self.hook_sae_fusion(feature_acts)
             
         # Decode
-        sae_out = self.decode(modulated_acts)
+        sae_out = self.decode(feature_acts)
         
-        # Add Reconstruction Error for clean intervention
         if self.use_error_term:
-            with torch.no_grad():
-                with _disable_hooks(self):
-                    feature_acts_clean = self.encode(x)
-                    x_reconstruct_clean = self.decode(feature_acts_clean)
-                sae_error = self.hook_sae_error(x - x_reconstruct_clean)
             sae_out = sae_out + sae_error
             
         return self.hook_sae_output(sae_out)
