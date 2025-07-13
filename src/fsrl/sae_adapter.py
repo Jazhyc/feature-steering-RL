@@ -67,11 +67,21 @@ class SAEAdapter(SAE):
         self.setup()
         
     def _initialize_adapter_weights(self):
-        """Applies Kaiming uniform initialization to the adapter's layers."""
+        """
+        Applies Kaiming uniform initialization to the adapter's layers.
+        The final layer is initialized to zero to ensure it acts as an identity initially
+        """
         for layer in self.adapter_layers:
             nn.init.kaiming_uniform_(layer.weight, nonlinearity="relu")
             if layer.bias is not None:
                 nn.init.zeros_(layer.bias)
+                
+        # Ensure the final layer is initialized close to zero (identity)
+        # Maybe use a constant later?
+        final_layer = self.adapter_layers[-1]
+        nn.init.normal_(final_layer.weight, mean=0.0, std=0.0001)
+        if final_layer.bias is not None:
+            nn.init.zeros_(final_layer.bias)
 
     def get_steering_vector(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -120,7 +130,7 @@ class SAEAdapter(SAE):
         
         # Fusion
         if self.fusion_mode == "multiplicative":
-            feature_acts = feature_acts * steering_vector
+            feature_acts = feature_acts * (1 + steering_vector) # Ensures that an output of 0 is identity
         else:
             feature_acts = feature_acts + steering_vector
         feature_acts = self.hook_sae_fusion(feature_acts)
