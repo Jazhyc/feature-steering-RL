@@ -79,7 +79,7 @@ class SAEAdapter(SAE):
         # Ensure the final layer is initialized close to zero (identity)
         # Maybe use a constant later?
         final_layer = self.adapter_layers[-1]
-        nn.init.normal_(final_layer.weight, mean=0.0, std=0.0001)
+        nn.init.normal_(final_layer.weight, mean=0.0, std=1e-5)
         if final_layer.bias is not None:
             nn.init.zeros_(final_layer.bias)
 
