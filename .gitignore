@@ -201,6 +201,9 @@ cython_debug/
 *.pt
 *.pth
 
+# Maybe this is too broad?
+*.json
+
 # Logs
 logs/*
 !logs/.gitkeep

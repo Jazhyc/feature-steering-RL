@@ -157,15 +157,17 @@ class SAEAdapter(SAE):
         sae_temp, cfg_dict, sparsity = SAE.from_pretrained(
             release, sae_id, device=device, force_download=force_download
         )
-        state_dict = sae_temp.state_dict()
-        del sae_temp
 
         sae_adapter_instance = cls(
             cfg=SAEConfig.from_dict(cfg_dict), 
             **adapter_kwargs
         )
         
-        sae_adapter_instance.load_state_dict(state_dict, strict=False)
+        # Manually add the release info to the config for later saving.
+        sae_adapter_instance.cfg.release = release
+        sae_adapter_instance.cfg.sae_id = sae_id
+        
+        sae_adapter_instance.load_state_dict(sae_temp.state_dict(), strict=False)
         
         return sae_adapter_instance, cfg_dict, sparsity
 
@@ -173,49 +175,60 @@ class SAEAdapter(SAE):
         """Returns the adapter's trainable parameters for an optimizer."""
         return list(self.adapter_layers.parameters())
     
-    def save_model(self, path: str | Path):
-        """Saves the adapter's state_dict and JSON config to a directory."""
+    def save_adapter(self, path: str | Path):
+        """Saves only the adapter's weights and its configuration."""
         path = Path(path)
         path.mkdir(parents=True, exist_ok=True)
 
-        # Save weights
-        weights_path = path / "sae_weights.safetensors"
-        save_file(self.state_dict(), weights_path)
+        save_file(
+            self.adapter_layers.state_dict(),
+            path / "adapter_weights.safetensors"
+        )
 
-        # Create and save augmented config
-        config = self.cfg.to_dict()
-        config["fusion_mode"] = self.fusion_mode
-        config["adapter_layers"] = [
-            layer.out_features for layer in self.adapter_layers[:-1]
-        ]
+        adapter_config = {
+            "base_sae_release": self.cfg.release,
+            "base_sae_id": self.cfg.sae_id,
+            "fusion_mode": self.fusion_mode,
+            "adapter_layers": [
+                layer.out_features for layer in self.adapter_layers[:-1]
+            ],
+            "sae_config": self.cfg.to_dict()
+        }
+        with open(path / "adapter_config.json", 'w') as f:
+            json.dump(adapter_config, f, indent=4)
         
-        config_path = path / "sae_config.json"
-        with open(config_path, 'w') as f:
-            json.dump(config, f, indent=4)
-            
-        print(f"SAEAdapter saved to {path}")
-        
+        print(f"Adapter saved to {path}")
+
     @classmethod
-    def from_disk(cls, path: str | Path, device: str = "cpu") -> "SAEAdapter":
-        """Loads a saved SAEAdapter from a directory."""
+    def load_from_pretrained_adapter(
+        cls,
+        path: str | Path,
+        device: str = "cpu",
+        force_download: bool = False,
+    ) -> "SAEAdapter":
+        """Loads a base SAE from the hub and applies local adapter weights."""
         path = Path(path)
         
-        # Load config and extract adapter-specific arguments
-        with open(path / "sae_config.json", 'r') as f:
+        # Load the adapter's configuration
+        with open(path / "adapter_config.json", 'r') as f:
             config = json.load(f)
-            
-        adapter_kwargs = {
-            "fusion_mode": config.pop("fusion_mode", "additive"),
-            "adapter_layers": config.pop("adapter_layers", None),
-        }
-        config['device'] = device
 
-        # Create instance from config
-        instance = cls(cfg=SAEConfig.from_dict(config), **adapter_kwargs)
+        # Create the full model instance by downloading the base SAE
+        instance, _, _ = cls.from_pretrained(
+            release=config["base_sae_release"],
+            sae_id=config["base_sae_id"],
+            device=device,
+            force_download=force_download,
+            fusion_mode=config["fusion_mode"],
+            adapter_layers=config["adapter_layers"]
+        )
+
+        # Load the locally saved adapter weights
+        adapter_state_dict = load_file(
+            path / "adapter_weights.safetensors", 
+            device=device
+        )
+        instance.adapter_layers.load_state_dict(adapter_state_dict)
         
-        # Load weights
-        state_dict = load_file(path / "sae_weights.safetensors", device=device)
-        instance.load_state_dict(state_dict)
-        
-        print(f"SAEAdapter loaded from {path}")
+        print(f"Adapter loaded from {path}")
         return instance
