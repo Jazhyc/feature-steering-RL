@@ -8,6 +8,7 @@ dependencies = [
     "bitsandbytes>=0.46.1",
     "jupyter>=1.1.1",
     "nnsight>=0.4.6",
+    "peft>=0.16.0",
     "sae-lens>=5.10.5",
     "torch>=2.7.0",
     "transformer-lens>=2.15.4",
