@@ -1,13 +1,18 @@
 import torch
 from torch import nn
 import json
-from typing import Literal, List, Any, Optional
+from typing import Literal, Any, Optional
 from sae_lens import SAE, SAEConfig
 from sae_lens.sae import _disable_hooks, get_activation_fn
 from pathlib import Path
 from safetensors.torch import save_file, load_file
 from transformer_lens.hook_points import HookPoint
 
+# New imports for LoRA
+from peft import get_peft_model, LoraConfig, PeftModel
+from peft.utils import set_peft_model_state_dict
+
+CUSTOM_CONFIG_NAME = 'fsrl_adapter_config.json'
 
 class SAEAdapter(SAE):
     """
@@ -16,13 +21,18 @@ class SAEAdapter(SAE):
     This class adds a parallel adapter network that learns to modulate the SAE's
     feature activations to achieve a downstream objective (e.g., via RL).
     The base SAE and LLM parameters remain frozen.
+
+    This version uses a single linear layer for the adapter and includes optional
+    LoRA support for memory efficiency.
     """
     def __init__(
         self,
         cfg: SAEConfig,
         use_error_term: bool = True,
-        adapter_layers: Optional[List[int]] = None,
-        fusion_mode: Literal["additive", "multiplicative"] = "additive"
+        fusion_mode: Literal["additive", "multiplicative"] = "additive",
+        use_lora_adapter: bool = False,
+        lora_rank: int = 16,
+        lora_alpha: int = 32,
     ):
         """
         Initializes the SAEAdapter.
@@ -30,58 +40,79 @@ class SAEAdapter(SAE):
         Args:
             cfg: Configuration for the base SAE.
             use_error_term: If True, adds the SAE's reconstruction error to the output.
-            adapter_layers: Hidden layer sizes for an MLP adapter. If None,
-                            defaults to a single linear layer with a ReLU activation.
             fusion_mode: How to combine features and steering vector
                          ('additive' or 'multiplicative').
+            use_lora_adapter: If True, the adapter's linear layer will
+                              be replaced with a LoRA layer for memory efficiency.
+            lora_rank: The rank 'r' for the LoRA decomposition.
+            lora_alpha: The alpha scaling parameter for LoRA.
         """
         super(SAEAdapter, self).__init__(cfg, use_error_term=use_error_term)
 
+        # Freeze the base SAE parameters
         for param in self.parameters():
             param.requires_grad = False
 
         self.fusion_mode = fusion_mode
         assert self.fusion_mode in ["additive", "multiplicative"]
         
-        # The adapter uses the same activation function as the base SAE.
-        self.adapter_activation = get_activation_fn(
-            cfg.activation_fn_str, **cfg.activation_fn_kwargs
-        )
+        # Define the adapter as a single linear layer.
+        self.adapter = nn.Sequential(nn.Linear(self.cfg.d_in, self.cfg.d_sae))
+        self._initialize_adapter_weights(use_lora_adapter)
         
-        # Define the adapter's layers, defaulting to a single linear layer 
-        self.adapter_layers = nn.ModuleList()
-        layer_dims = [self.cfg.d_in] + (adapter_layers or []) + [self.cfg.d_sae]
-        for i in range(len(layer_dims) - 1):
-            self.adapter_layers.append(nn.Linear(layer_dims[i], layer_dims[i+1]))
+        self.use_lora_adapter = use_lora_adapter
+        self.lora_rank = lora_rank
+        self.lora_alpha = lora_alpha
+
+        if self.use_lora_adapter:
+            
+            # If we are creating a LoRA adapter from scratch, we want the base
+            # linear layer to be zero-initialized before PEFT wraps it.
+            self._initialize_adapter_weights(is_lora_base=True)
+            
+            # Apply LoRA to the adapter's linear layer for memory-efficient training
+            lora_config = LoraConfig(
+                r=self.lora_rank,
+                lora_alpha=self.lora_alpha,
+                target_modules=["0"], # Target the first (and only) layer in the nn.Sequential
+                bias="none",
+                init_lora_weights=True, # This forces B to be 0
+            )
+            self.adapter = get_peft_model(self.adapter, lora_config)
+            self.adapter.print_trainable_parameters()
+            
+        else:
+            self._initialize_adapter_weights(is_lora_base=False)
         
-        self._initialize_adapter_weights()
-        self.adapter_layers.to(self.device, self.dtype)
-        self.adapter_activation.to(self.device, self.dtype)
+        self.adapter.to(self.device, self.dtype)
         
-        # Create hook points for the adapter to cache activations
-        self.hook_sae_adapter_pre = HookPoint()
-        self.hook_sae_adapter_post = HookPoint()
+        # Create hook points for the adapter to cache activations or for interventions
+        self.hook_sae_adapter = HookPoint()
         self.hook_sae_fusion = HookPoint()
         
         # Add hooks to the hook manager
         self.setup()
         
-    def _initialize_adapter_weights(self):
+    def _initialize_adapter_weights(self, is_lora_base: bool):
         """
-        Applies Kaiming uniform initialization to the adapter's layers.
-        The final layer is initialized to zero to ensure it acts as an identity initially
+        Initializes the base linear adapter layer.
+
+        Args:
+            is_lora_base: If True, the layer is a base for a LoRA adapter and will be
+                        zero-initialized. Otherwise, it's a full-rank adapter and will
+                        be initialized with small noise.
         """
-        for layer in self.adapter_layers:
-            nn.init.kaiming_uniform_(layer.weight, nonlinearity="relu")
-            if layer.bias is not None:
-                nn.init.zeros_(layer.bias)
-                
-        # Ensure the final layer is initialized close to zero (identity)
-        # Maybe use a constant later?
-        final_layer = self.adapter_layers[-1]
-        nn.init.normal_(final_layer.weight, mean=0.0, std=1e-5)
-        if final_layer.bias is not None:
-            nn.init.zeros_(final_layer.bias)
+        layer = self.adapter[0]
+        
+        if is_lora_base:
+            # Zero-initialize the base layer when LoRA will be applied on top.
+            nn.init.zeros_(layer.weight)
+        else:
+            # Initialize with small noise for a full-rank adapter.
+            nn.init.normal_(layer.weight, mean=0.0, std=1e-5)
+            
+        if layer.bias is not None:
+            nn.init.zeros_(layer.bias)
 
     def get_steering_vector(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -93,49 +124,37 @@ class SAEAdapter(SAE):
         Returns:
             The computed steering vector.
         """
-        adapter_in = x.to(self.dtype)
-        
-        # Pass through hidden layers (if any) with ReLU activations
-        for layer in self.adapter_layers[:-1]:
-            adapter_in = self.adapter_activation(layer(adapter_in))
-            
-        # Process through the final layer to get pre-activations
-        pre_act = self.adapter_layers[-1](adapter_in)
-        
-        # We need the LHS in case of interventions
-        pre_act = self.hook_sae_adapter_pre(pre_act)
-        
-        # Apply final activation and post-activation hook
-        post_act = self.adapter_activation(pre_act)
-        post_act = self.hook_sae_adapter_post(post_act)
-        
-        return post_act
+        # Get pre-activations from the adapter (works for both full-rank and LoRA)
+        act = self.adapter(x.to(self.dtype))
+        act = self.hook_sae_adapter(act)
+        return act
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass: modulates SAE features with the adapter's steering vector."""
         
-        # SAE Path (Frozen), we reuse variables for memory efficiency
-        # Feature vector is very large
+        # SAE Path (Frozen)
+        # The feature vector can be very large
         feature_acts = self.encode(x)
         
         # Compute Error for clean intervention
-        # Error based on clean (regular path)
+        # Error is based on the clean, unsteered path
         if self.use_error_term:
-            with _disable_hooks(self):
-                reconstruct_clean = self.decode(feature_acts)
-            sae_error = self.hook_sae_error(x - reconstruct_clean.detach())
+            with torch.no_grad():
+                with _disable_hooks(self):
+                    reconstruct_clean = self.decode(feature_acts)
+                sae_error = self.hook_sae_error(x - reconstruct_clean.detach())
         
         # Adapter Path (Trainable)
         steering_vector = self.get_steering_vector(x)
         
-        # Fusion
+        # Fusion of SAE features and steering vector
         if self.fusion_mode == "multiplicative":
-            feature_acts = feature_acts * (1 + steering_vector) # Ensures that an output of 0 is identity
-        else:
+            feature_acts = feature_acts * (1 + steering_vector) # Ensures an output of 0 is identity
+        else: # "additive"
             feature_acts = feature_acts + steering_vector
         feature_acts = self.hook_sae_fusion(feature_acts)
             
-        # Decode
+        # Decode the modulated features back into the residual stream
         sae_out = self.decode(feature_acts)
         
         if self.use_error_term:
@@ -151,50 +170,58 @@ class SAEAdapter(SAE):
         device: str = "cpu",
         force_download: bool = False,
         **adapter_kwargs: Any
-    ) -> tuple["SAEAdapter", dict[str, Any], torch.Tensor | None]:
+    ) -> tuple["SAEAdapter", dict[str, Any], Optional[torch.Tensor]]:
         """Loads a pretrained SAE and wraps it in an SAEAdapter."""
         
         sae_temp, cfg_dict, sparsity = SAE.from_pretrained(
             release, sae_id, device=device, force_download=force_download
         )
 
-        sae_adapter_instance = cls(
+        instance = cls(
             cfg=SAEConfig.from_dict(cfg_dict), 
             **adapter_kwargs
         )
         
         # Manually add the release info to the config for later saving.
-        sae_adapter_instance.cfg.release = release
-        sae_adapter_instance.cfg.sae_id = sae_id
+        instance.cfg.release = release
+        instance.cfg.sae_id = sae_id
         
-        sae_adapter_instance.load_state_dict(sae_temp.state_dict(), strict=False)
+        # Load the state dict of the base SAE; `strict=False` ignores missing adapter keys
+        instance.load_state_dict(sae_temp.state_dict(), strict=False)
         
-        return sae_adapter_instance, cfg_dict, sparsity
+        return instance, cfg_dict, sparsity
 
-    def get_trainable_parameters(self) -> List[nn.Parameter]:
+    def get_trainable_parameters(self) -> list[nn.Parameter]:
         """Returns the adapter's trainable parameters for an optimizer."""
-        return list(self.adapter_layers.parameters())
+        return list(self.adapter.parameters())
     
     def save_adapter(self, path: str | Path):
         """Saves only the adapter's weights and its configuration."""
         path = Path(path)
         path.mkdir(parents=True, exist_ok=True)
 
-        save_file(
-            self.adapter_layers.state_dict(),
-            path / "adapter_weights.safetensors"
-        )
+        # PEFT models have their own saving method that only saves the LoRA weights
+        if self.use_lora_adapter:
+            self.adapter.save_pretrained(path)
+            
+            # Delete readme.md file that PEFT adds (maybe check for a better way)
+            readme_path = path / "README.md"
+            if readme_path.exists():
+                readme_path.unlink()
+            
+        else:
+            save_file(self.adapter.state_dict(), path / "adapter_weights.safetensors")
 
         adapter_config = {
             "base_sae_release": self.cfg.release,
             "base_sae_id": self.cfg.sae_id,
             "fusion_mode": self.fusion_mode,
-            "adapter_layers": [
-                layer.out_features for layer in self.adapter_layers[:-1]
-            ],
+            "use_lora_adapter": self.use_lora_adapter,
+            "lora_rank": self.lora_rank,
+            "lora_alpha": self.lora_alpha,
             "sae_config": self.cfg.to_dict()
         }
-        with open(path / "adapter_config.json", 'w') as f:
+        with open(path / CUSTOM_CONFIG_NAME, 'w') as f:
             json.dump(adapter_config, f, indent=4)
         
         print(f"Adapter saved to {path}")
@@ -209,9 +236,17 @@ class SAEAdapter(SAE):
         """Loads a base SAE from the hub and applies local adapter weights."""
         path = Path(path)
         
+        CUSTOM_CONFIG_NAME = "fsrl_adapter_config.json"
         # Load the adapter's configuration
-        with open(path / "adapter_config.json", 'r') as f:
+        with open(path / CUSTOM_CONFIG_NAME, 'r') as f:
             config = json.load(f)
+
+        # Filter the loaded config to only include kwargs valid for SAEAdapter.__init__
+        valid_init_keys = ["fusion_mode", "use_lora_adapter", "lora_rank", "lora_alpha", "use_error_term"]
+        adapter_init_args = {k: v for k, v in config.items() if k in valid_init_keys}
+
+        # When loading a LoRA adapter, we create a plain one first and let PEFT wrap it.
+        is_lora_model = adapter_init_args.get("use_lora_adapter", False)
 
         # Create the full model instance by downloading the base SAE
         instance, _, _ = cls.from_pretrained(
@@ -219,16 +254,17 @@ class SAEAdapter(SAE):
             sae_id=config["base_sae_id"],
             device=device,
             force_download=force_download,
-            fusion_mode=config["fusion_mode"],
-            adapter_layers=config["adapter_layers"]
+            **adapter_init_args
         )
 
         # Load the locally saved adapter weights
-        adapter_state_dict = load_file(
-            path / "adapter_weights.safetensors", 
-            device=device
-        )
-        instance.adapter_layers.load_state_dict(adapter_state_dict)
+        if is_lora_model:
+            # adapter_model is hardcoded by PEFT?
+            adapter_weights = load_file(path / "adapter_model.safetensors", device=device)
+            set_peft_model_state_dict(instance.adapter, adapter_weights)
+        else:
+            state_dict = load_file(path / "adapter_weights.safetensors", device=device)
+            instance.adapter.load_state_dict(state_dict)
         
         print(f"Adapter loaded from {path}")
         return instance
