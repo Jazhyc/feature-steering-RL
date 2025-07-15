@@ -43,7 +43,8 @@ class HookedModel(nn.Module):
         This method is optimized for training loops.
         """
         if not self.steering_active:
-            return self.model(tokens, **kwargs)
+            logits = self.model(tokens, **kwargs)
+            return CausalLMOutput(logits=logits)
 
         def steering_hook(activation_value, hook):
             return self.sae_adapter(activation_value)

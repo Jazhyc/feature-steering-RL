@@ -1,6 +1,9 @@
 """
 Modified SimPO Trainer from https://github.com/princeton-nlp/SimPO/blob/main/scripts/simpo_trainer.py
 The unused imports have been removed and import paths have been updated.
+push_to_hub wrapper was removed due to changes in the trl library.
+Changes were made to match modern transformers API. 
+These include logging and creation of batches from chat template
 """
 
 import inspect
@@ -22,7 +25,9 @@ from transformers import AutoModelForCausalLM, PreTrainedModel, PreTrainedTokeni
 from transformers.trainer_callback import TrainerCallback
 from transformers.trainer_utils import EvalLoopOutput
 
-from trl.import_utils import is_peft_available, is_wandb_available
+from transformers.utils.import_utils import is_peft_available
+from transformers import is_wandb_available
+
 from .simpo_config import SimPOConfig
 
 from typing import Dict, Literal, Optional
@@ -33,7 +38,6 @@ from trl.trainer.utils import (
     disable_dropout_in_model,
     pad_to_length,
     peft_module_casting_to_bf16,
-    trl_sanitze_kwargs_for_tagging,
 )
 
 if is_peft_available():
@@ -59,8 +63,8 @@ class SimPOTrainer(Trainer):
             The dataset to use for training.
         eval_dataset (`datasets.Dataset`):
             The dataset to use for evaluation.
-        tokenizer (`transformers.PreTrainedTokenizerBase`):
-            The tokenizer to use for training. This argument is required if you want to use the default data collator.
+        processing_class (`transformers.PreTrainedTokenizerBase`):
+            The processing_class to use for training. This argument is required if you want to use the default data collator.
         model_init (`Callable[[], transformers.PreTrainedModel]`):
             The model initializer to use for training. If None is specified, the default model initializer will be used.
         callbacks (`List[transformers.TrainerCallback]`):
@@ -85,7 +89,7 @@ class SimPOTrainer(Trainer):
         data_collator: Optional[Callable[[List[Any]], Dict[str, Any]]] = None, # For some reason, DataCollator was being recognized as a variable
         train_dataset: Optional[Dataset] = None,
         eval_dataset: Optional[Union[Dataset, Dict[str, Dataset]]] = None,
-        tokenizer: Optional[PreTrainedTokenizerBase] = None,
+        processing_class: Optional[PreTrainedTokenizerBase] = None,
         model_init: Optional[Callable[[], PreTrainedModel]] = None,
         callbacks: Optional[List[TrainerCallback]] = None,
         optimizers: Tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LambdaLR] = (None, None),
@@ -187,7 +191,7 @@ class SimPOTrainer(Trainer):
             self.decoder_start_token_id = model.config.decoder_start_token_id
             self.pad_token_id = model.config.pad_token_id
 
-        if tokenizer is None:
+        if processing_class is None:
             raise ValueError("tokenizer must be specified to tokenize a SimPO dataset.")
         if args.max_length is None:
             warnings.warn(
@@ -220,7 +224,7 @@ class SimPOTrainer(Trainer):
 
         if data_collator is None:
             data_collator = DPODataCollatorWithPadding(
-                pad_token_id=tokenizer.pad_token_id,
+                pad_token_id=processing_class.pad_token_id,
                 label_pad_token_id=args.label_pad_token_id,
                 is_encoder_decoder=self.is_encoder_decoder,
             )
@@ -244,11 +248,11 @@ class SimPOTrainer(Trainer):
         self.max_length = max_length
         self.generate_during_eval = args.generate_during_eval
         self.label_pad_token_id = args.label_pad_token_id
-        self.padding_value = args.padding_value if args.padding_value is not None else tokenizer.pad_token_id
+        self.padding_value = args.padding_value if args.padding_value is not None else processing_class.pad_token_id
         self.max_prompt_length = max_prompt_length
         self.truncation_mode = args.truncation_mode
         self.max_target_length = max_target_length
-        self.tokenizer = tokenizer
+        self.processing_class = processing_class
 
         if args.loss_type in ["hinge"] and args.label_smoothing > 0:
             warnings.warn(
@@ -277,7 +281,7 @@ class SimPOTrainer(Trainer):
             data_collator=data_collator,
             train_dataset=train_dataset,
             eval_dataset=eval_dataset,
-            tokenizer=tokenizer,
+            processing_class=processing_class,
             model_init=model_init,
             compute_metrics=compute_metrics,
             callbacks=callbacks,
@@ -296,14 +300,14 @@ class SimPOTrainer(Trainer):
 
     def build_tokenized_answer(self, prompt, answer):
         """
-        Llama tokenizer does satisfy `enc(a + b) = enc(a) + enc(b)`.
+        Llama processing_class does satisfy `enc(a + b) = enc(a) + enc(b)`.
         It does ensure `enc(a + b) = enc(a) + enc(a + b)[len(enc(a)):]`.
         Reference:
             https://github.com/EleutherAI/lm-evaluation-harness/pull/531#issuecomment-1595586257
         """
 
-        full_tokenized = self.tokenizer(prompt + answer, add_special_tokens=False)
-        prompt_input_ids = self.tokenizer(prompt, add_special_tokens=False)["input_ids"]
+        full_tokenized = self.processing_class(prompt + answer, add_special_tokens=False)
+        prompt_input_ids = self.processing_class(prompt, add_special_tokens=False)["input_ids"]
 
         answer_input_ids = full_tokenized["input_ids"][len(prompt_input_ids) :]
         answer_attention_mask = full_tokenized["attention_mask"][len(prompt_input_ids) :]
@@ -317,7 +321,7 @@ class SimPOTrainer(Trainer):
         if len(full_input_ids) != len(full_concat_input_ids):
             raise ValueError("Prompt input ids and answer input ids should have the same length.")
 
-        # On some tokenizers, like Llama-2 tokenizer, there are occasions where tokens
+        # On some tokenizers, like Llama-2 processing_class, there are occasions where tokens
         # can be merged together when tokenizing prompt+answer. This could result
         # on the last token from the prompt being different when tokenized on its own
         # vs when done as prompt+answer.
@@ -359,6 +363,24 @@ class SimPOTrainer(Trainer):
         prompt = feature["prompt"]
         chosen = feature["chosen"]
         rejected = feature["rejected"]
+        
+        # Chosen and rejected are lists of dictionaries in chat format
+        if isinstance(chosen, list):
+            # Find the first dictionary with role 'assistant' and get its content
+            assistant_response = next((turn.get("content") for turn in chosen if turn.get("role") == "assistant"), None)
+            if assistant_response:
+                chosen = assistant_response
+            else:
+                # Handle cases where there might not be an assistant response, though unlikely
+                chosen = "" 
+
+        # Do the same for 'rejected'
+        if isinstance(rejected, list):
+            assistant_response = next((turn.get("content") for turn in rejected if turn.get("role") == "assistant"), None)
+            if assistant_response:
+                rejected = assistant_response
+            else:
+                rejected = ""
 
         if not self.is_encoder_decoder:
             # Check issues below for more details
@@ -368,7 +390,7 @@ class SimPOTrainer(Trainer):
 
             if not isinstance(prompt, str):
                 raise ValueError(f"prompt should be an str but got {type(prompt)}")
-            prompt_tokens = self.tokenizer(prompt, add_special_tokens=False)
+            prompt_tokens = self.processing_class(prompt, add_special_tokens=False)
             prompt_tokens = {f"prompt_{k}": v for k, v in prompt_tokens.items()}
 
             if not isinstance(chosen, str):
@@ -379,7 +401,7 @@ class SimPOTrainer(Trainer):
                 raise ValueError(f"rejected should be an str but got {type(rejected)}")
             rejected_tokens = self.build_tokenized_answer(prompt, rejected)
 
-            # Last prompt token might get merged by tokenizer and
+            # Last prompt token might get merged by processing_class and
             # it should not be included for generation if that happens
             prompt_len_input_ids = len(prompt_tokens["prompt_input_ids"])
 
@@ -399,11 +421,11 @@ class SimPOTrainer(Trainer):
             if num_diff_tokens > 1 or num_diff_len > 1:
                 raise ValueError(
                     "Chosen and rejected prompt_input_ids might only differ on the "
-                    "last token due to tokenizer merge ops."
+                    "last token due to processing_class merge ops."
                 )
 
             # add BOS token to head of prompt. Avoid adding if it's already there
-            bos_token_id = self.tokenizer.bos_token_id
+            bos_token_id = self.processing_class.bos_token_id
             if prompt_len_input_ids == 0 or bos_token_id != prompt_tokens["prompt_input_ids"][0]:
                 prompt_tokens["prompt_input_ids"] = [bos_token_id] + prompt_tokens["prompt_input_ids"]
                 prompt_tokens["prompt_attention_mask"] = [1] + prompt_tokens["prompt_attention_mask"]
@@ -415,7 +437,7 @@ class SimPOTrainer(Trainer):
                 rejected_tokens["prompt_attention_mask"] = [1] + rejected_tokens["prompt_attention_mask"]
 
             # add EOS token to end of answer. Avoid adding if it's already there
-            eos_token_id = self.tokenizer.eos_token_id
+            eos_token_id = self.processing_class.eos_token_id
             if len(chosen_tokens["input_ids"]) == 0 or eos_token_id != chosen_tokens["input_ids"][-1]:
                 chosen_tokens["input_ids"].append(eos_token_id)
                 chosen_tokens["attention_mask"].append(1)
@@ -470,13 +492,13 @@ class SimPOTrainer(Trainer):
                     batch[f"{k}{type_key}"] = tokens
 
         else:
-            chosen_tokens = self.tokenizer(
+            chosen_tokens = self.processing_class(
                 chosen, truncation=True, max_length=self.max_target_length, add_special_tokens=True
             )
-            rejected_tokens = self.tokenizer(
+            rejected_tokens = self.processing_class(
                 rejected, truncation=True, max_length=self.max_target_length, add_special_tokens=True
             )
-            prompt_tokens = self.tokenizer(
+            prompt_tokens = self.processing_class(
                 prompt, truncation=True, max_length=self.max_prompt_length, add_special_tokens=True
             )
 
@@ -622,7 +644,6 @@ class SimPOTrainer(Trainer):
         all_logits = model(
             concatenated_batch["concatenated_input_ids"],
             attention_mask=concatenated_batch["concatenated_attention_mask"],
-            use_cache=False,
             **model_kwargs,
         ).logits
 
@@ -734,6 +755,7 @@ class SimPOTrainer(Trainer):
         model: Union[PreTrainedModel, nn.Module],
         inputs: Dict[str, Union[torch.Tensor, Any]],
         return_outputs=False,
+        **kwargs,
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, Dict[str, torch.Tensor]]]:
         if not self.use_dpo_data_collator:
             warnings.warn(
@@ -753,7 +775,7 @@ class SimPOTrainer(Trainer):
             return (loss, metrics)
         return loss
 
-    def get_batch_samples(self, model, batch: Dict[str, torch.LongTensor]) -> Tuple[str, str]:
+    def _generate_batch_samples(self, model, batch: Dict[str, torch.LongTensor]) -> Tuple[str, str]:
         """Generate samples from the model and reference model for the given batch of inputs."""
 
         # If one uses `generate_during_eval` with peft + bf16, we need to explicitly call generate with
@@ -766,11 +788,11 @@ class SimPOTrainer(Trainer):
                 attention_mask=batch["prompt_attention_mask"],
                 max_length=self.max_length,
                 do_sample=True,
-                pad_token_id=self.tokenizer.pad_token_id,
+                pad_token_id=self.processing_class.pad_token_id,
             )
 
-        policy_output = pad_to_length(policy_output, self.max_length, self.tokenizer.pad_token_id)
-        policy_output_decoded = self.tokenizer.batch_decode(policy_output, skip_special_tokens=True)
+        policy_output = pad_to_length(policy_output, self.max_length, self.processing_class.pad_token_id)
+        policy_output_decoded = self.processing_class.batch_decode(policy_output, skip_special_tokens=True)
 
         return policy_output_decoded
 
@@ -844,7 +866,7 @@ class SimPOTrainer(Trainer):
             random_batch = self.data_collator(random_batch_dataset)
             random_batch = self._prepare_inputs(random_batch)
 
-            policy_output_decoded = self.get_batch_samples(self.model, random_batch)
+            policy_output_decoded = self._generate_batch_samples(self.model, random_batch)
 
             self.log(
                 {
@@ -866,7 +888,7 @@ class SimPOTrainer(Trainer):
 
         return initial_output
 
-    def log(self, logs: Dict[str, float]) -> None:
+    def log(self, logs: Dict[str, float], start_time=None) -> None:
         """
         Log `logs` on the various objects watching training, including stored metrics.
 
@@ -880,14 +902,4 @@ class SimPOTrainer(Trainer):
         for key, metrics in self._stored_metrics[train_eval].items():
             logs[key] = torch.tensor(metrics).mean().item()
         del self._stored_metrics[train_eval]
-        return super().log(logs)
-
-    @wraps(Trainer.push_to_hub)
-    def push_to_hub(self, commit_message: Optional[str] = "End of training", blocking: bool = True, **kwargs) -> str:
-        """
-        Overwrite the `push_to_hub` method in order to force-add the tag "simpo" when pushing the
-        model on the Hub. Please refer to `~transformers.Trainer.push_to_hub` for more details.
-        """
-        kwargs = trl_sanitze_kwargs_for_tagging(model=self.model, tag_names=self._tag_names, kwargs=kwargs)
-
-        return super().push_to_hub(commit_message=commit_message, blocking=blocking, **kwargs)
+        return super().log(logs, start_time)
