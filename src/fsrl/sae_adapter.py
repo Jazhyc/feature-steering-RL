@@ -30,8 +30,8 @@ class SAEAdapter(SAE):
         cfg: SAEConfig,
         use_error_term: bool = True,
         fusion_mode: Literal["additive", "multiplicative"] = "additive",
-        use_lora_adapter: bool = False,
-        lora_rank: int = 16,
+        use_lora_adapter: bool = True,
+        lora_rank: int = 64,
         lora_alpha: int = 32,
     ):
         """
