@@ -25,7 +25,6 @@ class HookedModel(nn.Module):
         self.config = AutoConfig.from_pretrained(model.cfg.model_name)
         self.hook_name = self.sae_adapter.cfg.hook_name
         
-        # --- KEY CHANGE: Store the original HookPoint before replacing it ---
         # This allows us to disable steering and restore the original model state.
         self._original_hook_point = self._get_deep_attr(self.model, self.hook_name)
         

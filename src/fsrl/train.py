@@ -48,7 +48,7 @@ def load_model_and_tokenizer(model_config: DictConfig) -> tuple:
         model_name=model_config.name,
         device=device, 
         torch_dtype=dtype,
-        # attn_implementation="flash_attention_2" if torch.cuda.is_available() else "eager",
+        attn_implementation="sdpa", # Compile with SDPA is faster than FA2?
     )
     
     tokenizer = model.tokenizer
