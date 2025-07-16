@@ -10,6 +10,7 @@ import os
 import torch
 import wandb
 import hydra
+import tempfile
 from omegaconf import DictConfig, OmegaConf
 from dotenv import load_dotenv
 from pathlib import Path
@@ -44,10 +45,12 @@ def load_model_and_tokenizer(model_config: DictConfig) -> tuple:
     dtype = dtype_map.get(model_config.dtype, torch.bfloat16)
     
     model = HookedTransformer.from_pretrained(
-        model_config.name, 
+        model_name=model_config.name,
         device=device, 
-        dtype=dtype
+        torch_dtype=dtype,
+        # attn_implementation="flash_attention_2" if torch.cuda.is_available() else "eager",
     )
+    
     tokenizer = model.tokenizer
     
     return model, tokenizer, device
@@ -107,6 +110,43 @@ def create_trainer(
     return trainer
 
 
+def save_adapter_to_wandb(sae: SAEAdapter, cfg: DictConfig, run_name: str = None) -> None:
+    """Save the trained adapter and configs to wandb as an artifact."""
+    
+    # Create a temporary directory to save the adapter
+    with tempfile.TemporaryDirectory() as temp_dir:
+        adapter_path = Path(temp_dir) / "trained_adapter"
+        
+        # Save the adapter locally first
+        sae.save_adapter(adapter_path)
+        
+        # Create wandb artifact
+        artifact_name = f"adapter-{run_name}" if run_name else "trained-adapter"
+        artifact = wandb.Artifact(
+            name=artifact_name,
+            type="model",
+            description="Trained SAE adapter with LoRA weights and configuration",
+            metadata={
+                "fusion_mode": sae.fusion_mode,
+                "use_lora_adapter": sae.use_lora_adapter,
+                "lora_rank": sae.lora_rank if sae.use_lora_adapter else None,
+                "lora_alpha": sae.lora_alpha if sae.use_lora_adapter else None,
+                "base_sae_release": sae.cfg.release,
+                "base_sae_id": sae.cfg.sae_id,
+                "training_config": OmegaConf.to_container(cfg.training, resolve=True),
+                "architecture_config": OmegaConf.to_container(cfg.architecture, resolve=True)
+            }
+        )
+        
+        # Add all files from the adapter directory to the artifact
+        artifact.add_dir(str(adapter_path), name="adapter")
+        
+        # Log the artifact to wandb
+        wandb.log_artifact(artifact)
+        
+        print(f"Adapter saved to wandb as artifact: {artifact_name}")
+
+
 @hydra.main(version_base=None, config_path="../../config", config_name="config")
 def main(cfg: DictConfig) -> None:
     """Main training function."""
@@ -150,6 +190,10 @@ def main(cfg: DictConfig) -> None:
     
     # Start training
     trainer.train()
+    
+    # Save the trained adapter to wandb
+    run_name = wandb.run.name if wandb.run else None
+    save_adapter_to_wandb(sae, cfg, run_name)
     
     # Finish wandb run
     wandb.finish()
