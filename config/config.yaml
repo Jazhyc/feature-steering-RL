@@ -1,0 +1,11 @@
+# Main training configuration
+defaults:
+  - architecture: gpt2_default
+  - training: simpo_default
+  - wandb: wandb
+  - _self_
+
+# Override any settings here if needed
+hydra:
+  run:
+    dir: logs/hydra_runs/${now:%Y-%m-%d_%H-%M-%S}

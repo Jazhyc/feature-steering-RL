@@ -1,0 +1,10 @@
+# @package wandb
+# Weights & Biases Configuration
+project: "FSRL"
+entity: "feature-steering-RL"
+dir: "logs"
+
+# Optional WandB settings
+tags: []
+notes: ""
+mode: "online"  # Options: "online", "offline", "disabled"

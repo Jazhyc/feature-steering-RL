@@ -32,7 +32,6 @@ from .simpo_config import SimPOConfig
 
 from typing import Dict, Literal, Optional
 
-
 from trl.trainer.utils import (
     DPODataCollatorWithPadding,
     disable_dropout_in_model,
@@ -46,6 +45,13 @@ if is_peft_available():
 if is_wandb_available():
     import wandb
 
+# https://github.com/huggingface/transformers/issues/18093
+# Stops the trainer from spamming the console with logs
+from transformers.trainer_callback import ProgressCallback
+def on_log(self, args, state, control, logs=None, **kwargs):
+    if state.is_local_process_zero and self.training_bar is not None:
+        _ = logs.pop("total_flos", None)
+ProgressCallback.on_log = on_log
 
 class SimPOTrainer(Trainer):
     r"""
