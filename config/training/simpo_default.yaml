@@ -16,11 +16,15 @@ torch_compile: true
 lr_scheduler_type: cosine
 warmup_ratio: 0.1
 
+# SimPO specific variables
+beta: 10
+gamma_beta_ratio: 0.5
+max_prompt_length: 128 # Should be 1800 for gemma (based on dataset)
+max_length: 512 # Should be 2048 for gemma
+
 # Additional training parameters
 save_steps: 10000
 logging_steps: 10
-max_prompt_length: 128 # Should be 1800 for gemma (based on dataset)
-max_length: 512 # Should be 2048 for gemma
 save_total_limit: 2
 eval_strategy: "steps"
 eval_epoch_fraction: 0.2 # non trainer argument needs to be popped
