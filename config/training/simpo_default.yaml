@@ -13,7 +13,7 @@ dataloader_pin_memory: true
 bf16: true
 optim: "adamw_torch_fused"
 logging_steps: 10
-torch_compile: false
+torch_compile: true
 
 # Additional training parameters
 save_steps: 10000

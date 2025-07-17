@@ -1,7 +1,7 @@
 # Architecture Configuration
 model:
-  name: "gpt2"
-  device: "cuda"  # Will be auto-detected if cuda is available
+  name: "gpt2" # Name on transformer_lens
+  device: "cuda"
   dtype: "bfloat16"
 
 sae:
@@ -9,12 +9,12 @@ sae:
   sae_id: "blocks.7.hook_resid_pre"
   use_lora_adapter: true
   lora_rank: 64
-  lora_alpha: 32
+  lora_alpha: ${.lora_rank}
   fusion_mode: "additive"
 
 dataset:
   name: "princeton-nlp/llama3-ultrafeedback-armorm"
   split: "train"
-  sample_size: 1  # Set to a number to limit dataset size for testing
+  sample_size: null  # Set to a number to limit dataset size for testing
 
 backup_chat_template: "{% if not add_generation_prompt is defined %}{% set add_generation_prompt = false %}{% endif %}{% for message in messages %}{{'<|im_start|>' + message['role'] + '\n' + message['content'] + '<|im_end|>' + '\n'}}{% endfor %}{% if add_generation_prompt %}{{ '<|im_start|>assistant\n' }}{% endif %}"

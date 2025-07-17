@@ -10,7 +10,6 @@ import os
 import torch
 import wandb
 import hydra
-import tempfile
 from omegaconf import DictConfig, OmegaConf
 from dotenv import load_dotenv
 from pathlib import Path
@@ -113,38 +112,44 @@ def create_trainer(
 def save_adapter_to_wandb(sae: SAEAdapter, cfg: DictConfig, run_name: str = None) -> None:
     """Save the trained adapter and configs to wandb as an artifact."""
     
-    # Create a temporary directory to save the adapter
-    with tempfile.TemporaryDirectory() as temp_dir:
-        adapter_path = Path(temp_dir) / "trained_adapter"
-        
-        # Save the adapter locally first
-        sae.save_adapter(adapter_path)
-        
-        # Create wandb artifact
-        artifact_name = f"adapter-{run_name}" if run_name else "trained-adapter"
-        artifact = wandb.Artifact(
-            name=artifact_name,
-            type="model",
-            description="Trained SAE adapter with LoRA weights and configuration",
-            metadata={
-                "fusion_mode": sae.fusion_mode,
-                "use_lora_adapter": sae.use_lora_adapter,
-                "lora_rank": sae.lora_rank if sae.use_lora_adapter else None,
-                "lora_alpha": sae.lora_alpha if sae.use_lora_adapter else None,
-                "base_sae_release": sae.cfg.release,
-                "base_sae_id": sae.cfg.sae_id,
-                "training_config": OmegaConf.to_container(cfg.training, resolve=True),
-                "architecture_config": OmegaConf.to_container(cfg.architecture, resolve=True)
-            }
-        )
-        
-        # Add all files from the adapter directory to the artifact
-        artifact.add_dir(str(adapter_path), name="adapter")
-        
-        # Log the artifact to wandb
-        wandb.log_artifact(artifact)
-        
-        print(f"Adapter saved to wandb as artifact: {artifact_name}")
+    # Use run_name as the folder name, fallback to "trained_adapter" if no run_name
+    folder_name = run_name if run_name else "trained_adapter"
+    
+    # Create a permanent model directory using the path from config
+    model_dir = Path(cfg.models_dir)
+    model_dir.mkdir(exist_ok=True)
+    
+    adapter_path = model_dir / folder_name
+    
+    # Save the adapter locally first
+    sae.save_adapter(adapter_path)
+    
+    # Create wandb artifact
+    artifact_name = f"adapter-{run_name}" if run_name else "trained-adapter"
+    artifact = wandb.Artifact(
+        name=artifact_name,
+        type="model",
+        description="Trained SAE adapter with LoRA weights and configuration",
+        metadata={
+            "fusion_mode": sae.fusion_mode,
+            "use_lora_adapter": sae.use_lora_adapter,
+            "lora_rank": sae.lora_rank if sae.use_lora_adapter else None,
+            "lora_alpha": sae.lora_alpha if sae.use_lora_adapter else None,
+            "base_sae_release": sae.cfg.release,
+            "base_sae_id": sae.cfg.sae_id,
+            "training_config": OmegaConf.to_container(cfg.training, resolve=True),
+            "architecture_config": OmegaConf.to_container(cfg.architecture, resolve=True)
+        }
+    )
+    
+    # Add all files from the adapter directory to the artifact
+    artifact.add_dir(str(adapter_path), name="adapter")
+    
+    # Log the artifact to wandb
+    wandb.log_artifact(artifact)
+    
+    print(f"Adapter saved to wandb as artifact: {artifact_name}")
+    print(f"Local copy saved to: {adapter_path.absolute()}")
 
 
 @hydra.main(version_base=None, config_path="../../config", config_name="config")
