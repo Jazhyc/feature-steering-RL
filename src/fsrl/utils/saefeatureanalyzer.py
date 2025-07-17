@@ -6,7 +6,6 @@ import requests
 import os
 import pandas as pd
 import tqdm
-from neuronpedia.np_sae_feature import SAEFeature
 
 class SAEfeatureAnalyzer:
     """
@@ -36,8 +35,38 @@ class SAEfeatureAnalyzer:
         self._collect_feature_labels()
 
     def _collect_feature_labels(self) -> None:
-        for idx in range(self.sae.cfg.d_sae):
-            self.feature_info[idx] = SAEFeature.get(self.model_id, self.sae_id, idx)
+        """
+        Fetches all feature explanations in a single bulk request from the
+        Neuronpedia API, which is much faster than fetching them one by one.
+        """
+        base_url = "https://www.neuronpedia.org/api/explanation/export"
+        
+        params = {
+            "modelId": self.model_id,
+            "saeId": self.sae_id
+        }
+        
+        print(f"Fetching all explanations for {self.model_id}/{self.sae_id}...")
+        
+        try:
+            response = requests.get(base_url, params=params)
+            # Raise an exception for bad status codes (4xx or 5xx)
+            response.raise_for_status()
+            
+            explanations_list = response.json()
+            
+            # The response is a list of explanation objects.
+            # We convert it to a dictionary keyed by the feature index for fast lookup.
+            for explanation in explanations_list:
+                feature_idx = int(explanation["index"])
+                # Store the entire explanation object, which includes the 'description' field.
+                self.feature_info[feature_idx] = explanation
+
+            print(f"Successfully loaded {len(self.feature_info)} feature explanations.")
+            
+        except requests.exceptions.RequestException as e:
+            print(f"Error fetching feature explanations: {e}")
+            print("Response body:", e.response.text if e.response else "No response")
     
     def _get_dashboard_html(self, sae_release: str, sae_id: str, feature_idx: int):
         return self.html_template.format(sae_release, sae_id, feature_idx)
@@ -106,36 +135,37 @@ class SAEfeatureAnalyzer:
             }
         )
 
-    @torch.no_grad()
-    def get_all_stats_dfs(self,
-        gpt2_small_sparse_autoencoders: dict[str, SAE],  # [hook_point, sae]
-        gpt2_small_sae_sparsities: dict[str, torch.Tensor],  # [hook_point, sae]
-        model: HookedTransformer,
-        cosine_sim: bool = False,
-    ):
-        stats_dfs = []
-        pbar = tqdm(gpt2_small_sparse_autoencoders.keys())
-        for key in pbar:
-            layer = int(key.split(".")[1])
-            sparse_autoencoder = gpt2_small_sparse_autoencoders[key]
-            pbar.set_description(f"Processing layer {sparse_autoencoder.cfg.hook_name}")
-            W_U_stats_df_dec, _ = get_W_U_W_dec_stats_df(
-                sparse_autoencoder.W_dec.cpu(), model, cosine_sim
-            )
-            log_feature_sparsity = gpt2_small_sae_sparsities[key].detach().cpu()
-            W_U_stats_df_dec["log_feature_sparsity"] = log_feature_sparsity
-            W_U_stats_df_dec["layer"] = layer + (1 if "post" in key else 0)
-            stats_dfs.append(W_U_stats_df_dec)
+    # Temporarily commented out
+    # @torch.no_grad()
+    # def get_all_stats_dfs(self,
+    #     gpt2_small_sparse_autoencoders: dict[str, SAE],  # [hook_point, sae]
+    #     gpt2_small_sae_sparsities: dict[str, torch.Tensor],  # [hook_point, sae]
+    #     model: HookedTransformer,
+    #     cosine_sim: bool = False,
+    # ):
+    #     stats_dfs = []
+    #     pbar = tqdm(gpt2_small_sparse_autoencoders.keys())
+    #     for key in pbar:
+    #         layer = int(key.split(".")[1])
+    #         sparse_autoencoder = gpt2_small_sparse_autoencoders[key]
+    #         pbar.set_description(f"Processing layer {sparse_autoencoder.cfg.hook_name}")
+    #         W_U_stats_df_dec, _ = get_W_U_W_dec_stats_df(
+    #             sparse_autoencoder.W_dec.cpu(), model, cosine_sim
+    #         )
+    #         log_feature_sparsity = gpt2_small_sae_sparsities[key].detach().cpu()
+    #         W_U_stats_df_dec["log_feature_sparsity"] = log_feature_sparsity
+    #         W_U_stats_df_dec["layer"] = layer + (1 if "post" in key else 0)
+    #         stats_dfs.append(W_U_stats_df_dec)
 
-        return pd.concat(stats_dfs, axis=0)
+    #     return pd.concat(stats_dfs, axis=0)
 
-    @torch.no_grad()
-    def get_W_U_W_dec_stats_df(self,
-        W_dec: torch.Tensor, model: HookedTransformer, cosine_sim: bool = False
-    ) -> tuple[pd.DataFrame, torch.Tensor]:
-        W_U = model.W_U.detach().cpu()
-        if cosine_sim:
-            W_U = W_U / W_U.norm(dim=0, keepdim=True)
-        dec_projection_onto_W_U = W_dec @ W_U
-        W_U_stats_df = self.get_stats_df(dec_projection_onto_W_U)
-        return W_U_stats_df, dec_projection_onto_W_U
+    # @torch.no_grad()
+    # def get_W_U_W_dec_stats_df(self,
+    #     W_dec: torch.Tensor, model: HookedTransformer, cosine_sim: bool = False
+    # ) -> tuple[pd.DataFrame, torch.Tensor]:
+    #     W_U = model.W_U.detach().cpu()
+    #     if cosine_sim:
+    #         W_U = W_U / W_U.norm(dim=0, keepdim=True)
+    #     dec_projection_onto_W_U = W_dec @ W_U
+    #     W_U_stats_df = self.get_stats_df(dec_projection_onto_W_U)
+    #     return W_U_stats_df, dec_projection_onto_W_U
