@@ -76,7 +76,8 @@ def load_sae_adapter(sae_config: DictConfig, device: str) -> SAEAdapter:
 
 def load_dataset_and_tokenizer(dataset_config: DictConfig, tokenizer, backup_chat_template: str):
     """Load the training dataset and configure the tokenizer."""
-    train_dataset = load_dataset(dataset_config.name, split=dataset_config.split)
+    train_dataset = load_dataset(dataset_config.name, split=dataset_config.train_split)
+    eval_dataset = load_dataset(dataset_config.name, split=dataset_config.eval_split)
     
     # Limit dataset size if specified (useful for testing)
     if dataset_config.sample_size is not None:
@@ -86,16 +87,22 @@ def load_dataset_and_tokenizer(dataset_config: DictConfig, tokenizer, backup_cha
     if not hasattr(tokenizer, 'chat_template') or tokenizer.chat_template is None:
         tokenizer.chat_template = backup_chat_template
     
-    return train_dataset
+    return train_dataset, eval_dataset
 
 
 def create_trainer(
     model, 
     tokenizer, 
-    train_dataset, 
+    train_dataset,
+    eval_dataset: None,
     training_config: DictConfig
 ):
     """Create the SimPO trainer."""
+    
+    training_config = OmegaConf.to_container(training_config, resolve=True)
+    eval_frequency = training_config.get("eval_epoch_fraction", 0.1)
+    training_config["eval_steps"] = int(len(train_dataset) * eval_frequency / training_config["per_device_train_batch_size"])
+    training_config.pop("eval_epoch_fraction", None)
     
     training_args = SimPOConfig(**training_config)
     
@@ -103,7 +110,8 @@ def create_trainer(
         model=model,
         args=training_args,
         processing_class=tokenizer,
-        train_dataset=train_dataset
+        train_dataset=train_dataset,
+        eval_dataset=eval_dataset,
     )
     
     return trainer
@@ -168,7 +176,7 @@ def main(cfg: DictConfig) -> None:
     sae_hooked_model = HookedModel(model, sae)
     
     # Load dataset
-    train_dataset = load_dataset_and_tokenizer(
+    train_dataset, eval_dataset = load_dataset_and_tokenizer(
         cfg.architecture.dataset, 
         tokenizer, 
         cfg.architecture.backup_chat_template
@@ -178,7 +186,8 @@ def main(cfg: DictConfig) -> None:
     trainer = create_trainer(
         sae_hooked_model, 
         tokenizer, 
-        train_dataset, 
+        train_dataset,
+        eval_dataset,
         cfg.training
     )
     
