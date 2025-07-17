@@ -4,6 +4,8 @@ from fsrl.sae_adapter import SAEAdapter
 from IPython.display import display, IFrame
 import requests
 import os
+import pandas as pd
+import tqdm
 from neuronpedia.np_sae_feature import SAEFeature
 
 class SAEfeatureAnalyzer:
@@ -12,6 +14,7 @@ class SAEfeatureAnalyzer:
     its features and the steering vector of the policy.
     Uses this libary to interact with Neuronpedia API.
     https://github.com/hijohnnylin/neuronpedia-python
+    Also some things from this notebook: https://github.com/jbloomAus/SAELens/blob/main/tutorials/logits_lens_with_features.ipynb
     """
     def __init__(self, sae_hooked_model: HookedModel, api_key: str):
         self.hooked_model = sae_hooked_model
@@ -50,6 +53,86 @@ class SAEfeatureAnalyzer:
 
         return IFrame(html, width=1200, height=600)
 
-    def create_viz(self):
-        return self
+    @torch.no_grad()
+    def get_feature_property_df(self, feature_sparsity: torch.Tensor) -> pd.DataFrame:
+        """
+        feature_property_df = get_feature_property_df(sae, log_feature_density.cpu())
+        """
+        sae = self.sae
 
+        W_dec_normalized = (
+            sae.W_dec.cpu()
+        )  # / sparse_autoencoder.W_dec.cpu().norm(dim=-1, keepdim=True)
+        W_enc_normalized = (sae.W_enc.cpu() / sae.W_enc.cpu().norm(dim=-1, keepdim=True)).T
+
+        d_e_projection = (W_dec_normalized * W_enc_normalized).sum(-1)
+        b_dec_projection = sae.b_dec.cpu() @ W_dec_normalized.T
+
+        return pd.DataFrame(
+            {
+                "log_feature_sparsity": feature_sparsity + 1e-10,
+                "d_e_projection": d_e_projection,
+                # "d_e_projection_normalized": d_e_projection_normalized,
+                "b_enc": sae.b_enc.detach().cpu(),
+                "b_dec_projection": b_dec_projection,
+                "feature": list(range(sae.cfg.d_sae)),  # type: ignore
+                "dead_neuron": (feature_sparsity < -9).cpu(),
+            }
+        )
+    
+    @torch.no_grad()
+    def get_stats_df(self, projection: torch.Tensor) -> pd.DataFrame:
+        """
+        Returns a dataframe with the mean, std, skewness and kurtosis of the projection
+        """
+        mean = projection.mean(dim=1, keepdim=True)
+        diffs = projection - mean
+        var = (diffs**2).mean(dim=1, keepdim=True)
+        std = torch.pow(var, 0.5)
+        zscores = diffs / std
+        skews = torch.mean(torch.pow(zscores, 3.0), dim=1)
+        kurtosis = torch.mean(torch.pow(zscores, 4.0), dim=1)
+
+        return pd.DataFrame(
+            {
+                "feature": range(len(skews)),
+                "mean": mean.numpy().squeeze(),
+                "std": std.numpy().squeeze(),
+                "skewness": skews.numpy(),
+                "kurtosis": kurtosis.numpy(),
+            }
+        )
+
+    @torch.no_grad()
+    def get_all_stats_dfs(self,
+        gpt2_small_sparse_autoencoders: dict[str, SAE],  # [hook_point, sae]
+        gpt2_small_sae_sparsities: dict[str, torch.Tensor],  # [hook_point, sae]
+        model: HookedTransformer,
+        cosine_sim: bool = False,
+    ):
+        stats_dfs = []
+        pbar = tqdm(gpt2_small_sparse_autoencoders.keys())
+        for key in pbar:
+            layer = int(key.split(".")[1])
+            sparse_autoencoder = gpt2_small_sparse_autoencoders[key]
+            pbar.set_description(f"Processing layer {sparse_autoencoder.cfg.hook_name}")
+            W_U_stats_df_dec, _ = get_W_U_W_dec_stats_df(
+                sparse_autoencoder.W_dec.cpu(), model, cosine_sim
+            )
+            log_feature_sparsity = gpt2_small_sae_sparsities[key].detach().cpu()
+            W_U_stats_df_dec["log_feature_sparsity"] = log_feature_sparsity
+            W_U_stats_df_dec["layer"] = layer + (1 if "post" in key else 0)
+            stats_dfs.append(W_U_stats_df_dec)
+
+        return pd.concat(stats_dfs, axis=0)
+
+    @torch.no_grad()
+    def get_W_U_W_dec_stats_df(self,
+        W_dec: torch.Tensor, model: HookedTransformer, cosine_sim: bool = False
+    ) -> tuple[pd.DataFrame, torch.Tensor]:
+        W_U = model.W_U.detach().cpu()
+        if cosine_sim:
+            W_U = W_U / W_U.norm(dim=0, keepdim=True)
+        dec_projection_onto_W_U = W_dec @ W_U
+        W_U_stats_df = self.get_stats_df(dec_projection_onto_W_U)
+        return W_U_stats_df, dec_projection_onto_W_U
