@@ -873,6 +873,7 @@ dependencies = [
     { name = "dotenv" },
     { name = "hydra-core" },
     { name = "jupyter" },
+    { name = "neuronpedia" },
     { name = "nnsight" },
     { name = "peft" },
     { name = "sae-lens" },
@@ -888,6 +889,7 @@ requires-dist = [
     { name = "dotenv", specifier = ">=0.9.9" },
     { name = "hydra-core", specifier = ">=1.3.2" },
     { name = "jupyter", specifier = ">=1.1.1" },
+    { name = "neuronpedia", specifier = ">=1.0.22" },
     { name = "nnsight", specifier = ">=0.4.6" },
     { name = "peft", specifier = ">=0.16.0" },
     { name = "sae-lens", specifier = ">=5.10.5" },
@@ -1905,6 +1907,19 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/6c/4f/ccdb8ad3a38e583f214547fd2f7ff1fc160c43a75af88e6aec213404b96a/networkx-3.5.tar.gz", hash = "sha256:d4c6f9cf81f52d69230866796b82afbccdec3db7ae4fbd1b65ea750feed50037", size = 2471065, upload-time = "2025-05-29T11:35:07.804Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/eb/8d/776adee7bbf76365fdd7f2552710282c79a4ead5d2a46408c9043a2b70ba/networkx-3.5-py3-none-any.whl", hash = "sha256:0030d386a9a06dee3565298b4a734b68589749a544acbb6c412dc9e2489ec6ec", size = 2034406, upload-time = "2025-05-29T11:35:04.961Z" },
+]
+
+[[package]]
+name = "neuronpedia"
+version = "1.0.22"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "python-dotenv" },
+    { name = "requests" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/28/1c/4a3f30dbfa2f77ca8c58fde94aef3a4424930879dc0563bc58f5d3dae702/neuronpedia-1.0.22.tar.gz", hash = "sha256:8864db80fb66b0b84c77b21fc1315f0287a44110f4c516aaf925825e8b3983b6", size = 36970, upload-time = "2025-06-19T23:11:18.421Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e6/3b/8e5487e836794da3d63cc0ba013e2d28192339689ad8ff39adf4b91db7fc/neuronpedia-1.0.22-py3-none-any.whl", hash = "sha256:6e3f0f4c526fdf34e06eaa2418a6e1455dfa2426ae8e3e7eedf54ddea5dac77c", size = 54682, upload-time = "2025-06-19T23:11:17.274Z" },
 ]
 
 [[package]]

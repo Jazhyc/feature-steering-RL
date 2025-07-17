@@ -9,6 +9,7 @@ dependencies = [
     "dotenv>=0.9.9",
     "hydra-core>=1.3.2",
     "jupyter>=1.1.1",
+    "neuronpedia>=1.0.22",
     "nnsight>=0.4.6",
     "peft>=0.16.0",
     "sae-lens>=5.10.5",
