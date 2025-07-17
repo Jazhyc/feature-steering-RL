@@ -9,10 +9,12 @@ These include logging and creation of batches from chat template
 import inspect
 import random
 import warnings
+import logging
 from collections import defaultdict
 from contextlib import nullcontext
 from functools import wraps
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -909,3 +911,125 @@ class SimPOTrainer(Trainer):
             logs[key] = torch.tensor(metrics).mean().item()
         del self._stored_metrics[train_eval]
         return super().log(logs, start_time)
+
+    def _save(self, output_dir: Optional[str] = None, state_dict=None):
+        """
+        Override the default save method to handle SAEAdapter custom saving.
+        
+        This method detects if the model is a HookedModel containing an SAEAdapter
+        and uses the custom save_adapter method instead of the default PyTorch saving.
+        """
+        # Set default output directory
+        if output_dir is None:
+            output_dir = self.args.output_dir
+            
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Check if this is a HookedModel with SAEAdapter
+        if hasattr(self.model, 'sae_adapter'):
+            # This is our custom HookedModel - save only the adapter
+            try:
+                # Save the SAE adapter using its custom method
+                adapter_path = output_dir / "sae_adapter"
+                self.model.sae_adapter.save_adapter(adapter_path)
+                
+                # Save the training state (optimizer, scheduler, etc.)
+                # TrainerState doesn't have state_dict, so we save it as a dictionary
+                training_state = {
+                    'epoch': self.state.epoch,
+                    'global_step': self.state.global_step,
+                    'max_steps': self.state.max_steps,
+                    'num_train_epochs': self.state.num_train_epochs,
+                    'log_history': self.state.log_history,
+                    'best_metric': getattr(self.state, 'best_metric', None),
+                    'best_model_checkpoint': getattr(self.state, 'best_model_checkpoint', None),
+                }
+                torch.save(training_state, output_dir / "training_state.bin")
+                
+                # Save optimizer and scheduler state if they exist
+                if self.optimizer is not None:
+                    torch.save(self.optimizer.state_dict(), output_dir / "optimizer.bin")
+                if self.lr_scheduler is not None:
+                    torch.save(self.lr_scheduler.state_dict(), output_dir / "scheduler.bin")
+                
+                # Save the training arguments
+                torch.save(self.args, output_dir / "training_args.bin")
+                
+                print(f"SAE Adapter and training state saved to {output_dir}")
+                
+            except Exception as e:
+                print(f"Failed to save SAE adapter: {e}")
+                print(f"Error details: {type(e).__name__}: {str(e)}")
+                # Don't fallback to default saving as it will cause the shared tensor error
+                # Just save the adapter without the training state
+                try:
+                    adapter_path = output_dir / "sae_adapter"
+                    self.model.sae_adapter.save_adapter(adapter_path)
+                    print(f"Fallback: Only SAE adapter saved to {adapter_path}")
+                except Exception as fallback_e:
+                    print(f"Fallback also failed: {fallback_e}")
+                    raise e
+        else:
+            # Standard model - use default saving
+            super()._save(output_dir, state_dict)
+
+    def _load_from_checkpoint(self, resume_from_checkpoint: str):
+        """
+        Override to handle loading SAEAdapter from custom checkpoint format.
+        
+        Args:
+            resume_from_checkpoint: Path to the checkpoint directory
+        """
+        checkpoint_path = Path(resume_from_checkpoint)
+        
+        # Check if this is our custom SAEAdapter checkpoint format
+        adapter_path = checkpoint_path / "sae_adapter"
+        training_state_path = checkpoint_path / "training_state.bin"
+        optimizer_path = checkpoint_path / "optimizer.bin"
+        scheduler_path = checkpoint_path / "scheduler.bin"
+        
+        if adapter_path.exists() and hasattr(self.model, 'sae_adapter'):
+            try:
+                # Load the SAE adapter
+                from fsrl import SAEAdapter
+                device = next(self.model.parameters()).device
+                loaded_adapter = SAEAdapter.load_from_pretrained_adapter(adapter_path, device=str(device))
+                
+                # Replace the adapter in the model
+                self.model.sae_adapter = loaded_adapter
+                
+                # Load training state if it exists
+                if training_state_path.exists():
+                    training_state = torch.load(training_state_path, map_location="cpu")
+                    
+                    # Restore state attributes
+                    self.state.epoch = training_state.get('epoch', 0)
+                    self.state.global_step = training_state.get('global_step', 0)
+                    self.state.max_steps = training_state.get('max_steps', -1)
+                    self.state.num_train_epochs = training_state.get('num_train_epochs', 0)
+                    self.state.log_history = training_state.get('log_history', [])
+                    if 'best_metric' in training_state:
+                        self.state.best_metric = training_state['best_metric']
+                    if 'best_model_checkpoint' in training_state:
+                        self.state.best_model_checkpoint = training_state['best_model_checkpoint']
+                
+                # Load optimizer state if it exists
+                if optimizer_path.exists() and self.optimizer is not None:
+                    optimizer_state = torch.load(optimizer_path, map_location="cpu")
+                    self.optimizer.load_state_dict(optimizer_state)
+                
+                # Load scheduler state if it exists  
+                if scheduler_path.exists() and self.lr_scheduler is not None:
+                    scheduler_state = torch.load(scheduler_path, map_location="cpu")
+                    self.lr_scheduler.load_state_dict(scheduler_state)
+                
+                print(f"Successfully loaded SAE adapter from {checkpoint_path}")
+                
+            except Exception as e:
+                print(f"Failed to load SAE adapter: {e}")
+                # Fallback to default loading
+                super()._load_from_checkpoint(resume_from_checkpoint)
+        else:
+            # Standard checkpoint - use default loading
+            super()._load_from_checkpoint(resume_from_checkpoint)
