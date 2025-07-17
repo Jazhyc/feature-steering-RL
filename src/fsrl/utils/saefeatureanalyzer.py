@@ -31,6 +31,8 @@ class SAEfeatureAnalyzer:
 
         # An SAE feature id is [MODEL_ID]@[SAE_ID]:[FEATURE_IDX]
         self.feature_info = {}
+        
+        # This will currently take forever
         self._collect_feature_labels()
 
     def _collect_feature_labels(self) -> None:
