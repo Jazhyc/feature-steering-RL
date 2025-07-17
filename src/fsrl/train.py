@@ -10,7 +10,6 @@ import os
 import torch
 import wandb
 import hydra
-import tempfile
 from omegaconf import DictConfig, OmegaConf
 from dotenv import load_dotenv
 from pathlib import Path
@@ -44,11 +43,11 @@ def load_model_and_tokenizer(model_config: DictConfig) -> tuple:
     }
     dtype = dtype_map.get(model_config.dtype, torch.bfloat16)
     
-    model = HookedTransformer.from_pretrained(
+    model = HookedTransformer.from_pretrained_no_processing(
         model_name=model_config.name,
         device=device, 
         torch_dtype=dtype,
-        # attn_implementation="flash_attention_2" if torch.cuda.is_available() else "eager",
+        attn_implementation="sdpa", # Compile with SDPA is faster than FA2?
     )
     
     tokenizer = model.tokenizer
@@ -77,7 +76,8 @@ def load_sae_adapter(sae_config: DictConfig, device: str) -> SAEAdapter:
 
 def load_dataset_and_tokenizer(dataset_config: DictConfig, tokenizer, backup_chat_template: str):
     """Load the training dataset and configure the tokenizer."""
-    train_dataset = load_dataset(dataset_config.name, split=dataset_config.split)
+    train_dataset = load_dataset(dataset_config.name, split=dataset_config.train_split)
+    eval_dataset = load_dataset(dataset_config.name, split=dataset_config.eval_split)
     
     # Limit dataset size if specified (useful for testing)
     if dataset_config.sample_size is not None:
@@ -87,16 +87,22 @@ def load_dataset_and_tokenizer(dataset_config: DictConfig, tokenizer, backup_cha
     if not hasattr(tokenizer, 'chat_template') or tokenizer.chat_template is None:
         tokenizer.chat_template = backup_chat_template
     
-    return train_dataset
+    return train_dataset, eval_dataset
 
 
 def create_trainer(
     model, 
     tokenizer, 
-    train_dataset, 
+    train_dataset,
+    eval_dataset: None,
     training_config: DictConfig
 ):
     """Create the SimPO trainer."""
+    
+    training_config = OmegaConf.to_container(training_config, resolve=True)
+    eval_frequency = training_config.get("eval_epoch_fraction", 0.1)
+    training_config["eval_steps"] = int(len(train_dataset) * eval_frequency / training_config["per_device_train_batch_size"])
+    training_config.pop("eval_epoch_fraction", None)
     
     training_args = SimPOConfig(**training_config)
     
@@ -104,7 +110,8 @@ def create_trainer(
         model=model,
         args=training_args,
         processing_class=tokenizer,
-        train_dataset=train_dataset
+        train_dataset=train_dataset,
+        eval_dataset=eval_dataset,
     )
     
     return trainer
@@ -113,38 +120,44 @@ def create_trainer(
 def save_adapter_to_wandb(sae: SAEAdapter, cfg: DictConfig, run_name: str = None) -> None:
     """Save the trained adapter and configs to wandb as an artifact."""
     
-    # Create a temporary directory to save the adapter
-    with tempfile.TemporaryDirectory() as temp_dir:
-        adapter_path = Path(temp_dir) / "trained_adapter"
-        
-        # Save the adapter locally first
-        sae.save_adapter(adapter_path)
-        
-        # Create wandb artifact
-        artifact_name = f"adapter-{run_name}" if run_name else "trained-adapter"
-        artifact = wandb.Artifact(
-            name=artifact_name,
-            type="model",
-            description="Trained SAE adapter with LoRA weights and configuration",
-            metadata={
-                "fusion_mode": sae.fusion_mode,
-                "use_lora_adapter": sae.use_lora_adapter,
-                "lora_rank": sae.lora_rank if sae.use_lora_adapter else None,
-                "lora_alpha": sae.lora_alpha if sae.use_lora_adapter else None,
-                "base_sae_release": sae.cfg.release,
-                "base_sae_id": sae.cfg.sae_id,
-                "training_config": OmegaConf.to_container(cfg.training, resolve=True),
-                "architecture_config": OmegaConf.to_container(cfg.architecture, resolve=True)
-            }
-        )
-        
-        # Add all files from the adapter directory to the artifact
-        artifact.add_dir(str(adapter_path), name="adapter")
-        
-        # Log the artifact to wandb
-        wandb.log_artifact(artifact)
-        
-        print(f"Adapter saved to wandb as artifact: {artifact_name}")
+    # Use run_name as the folder name, fallback to "trained_adapter" if no run_name
+    folder_name = run_name if run_name else "trained_adapter"
+    
+    # Create a permanent model directory using the path from config
+    model_dir = Path(cfg.models_dir)
+    model_dir.mkdir(exist_ok=True)
+    
+    adapter_path = model_dir / folder_name
+    
+    # Save the adapter locally first
+    sae.save_adapter(adapter_path)
+    
+    # Create wandb artifact
+    artifact_name = f"adapter-{run_name}" if run_name else "trained-adapter"
+    artifact = wandb.Artifact(
+        name=artifact_name,
+        type="model",
+        description="Trained SAE adapter with LoRA weights and configuration",
+        metadata={
+            "fusion_mode": sae.fusion_mode,
+            "use_lora_adapter": sae.use_lora_adapter,
+            "lora_rank": sae.lora_rank if sae.use_lora_adapter else None,
+            "lora_alpha": sae.lora_alpha if sae.use_lora_adapter else None,
+            "base_sae_release": sae.cfg.release,
+            "base_sae_id": sae.cfg.sae_id,
+            "training_config": OmegaConf.to_container(cfg.training, resolve=True),
+            "architecture_config": OmegaConf.to_container(cfg.architecture, resolve=True)
+        }
+    )
+    
+    # Add all files from the adapter directory to the artifact
+    artifact.add_dir(str(adapter_path), name="adapter")
+    
+    # Log the artifact to wandb
+    wandb.log_artifact(artifact)
+    
+    print(f"Adapter saved to wandb as artifact: {artifact_name}")
+    print(f"Local copy saved to: {adapter_path.absolute()}")
 
 
 @hydra.main(version_base=None, config_path="../../config", config_name="config")
@@ -163,7 +176,7 @@ def main(cfg: DictConfig) -> None:
     sae_hooked_model = HookedModel(model, sae)
     
     # Load dataset
-    train_dataset = load_dataset_and_tokenizer(
+    train_dataset, eval_dataset = load_dataset_and_tokenizer(
         cfg.architecture.dataset, 
         tokenizer, 
         cfg.architecture.backup_chat_template
@@ -173,7 +186,8 @@ def main(cfg: DictConfig) -> None:
     trainer = create_trainer(
         sae_hooked_model, 
         tokenizer, 
-        train_dataset, 
+        train_dataset,
+        eval_dataset,
         cfg.training
     )
     

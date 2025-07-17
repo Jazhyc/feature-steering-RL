@@ -12,11 +12,21 @@ dataloader_pin_memory: true
 # Training optimizations
 bf16: true
 optim: "adamw_torch_fused"
-logging_steps: 10
 torch_compile: true
+lr_scheduler_type: cosine
+warmup_ratio: 0.1
+
+# SimPO specific variables
+beta: 10
+gamma_beta_ratio: 0.5
+max_prompt_length: 128 # Should be 1800 for gemma (based on dataset)
+max_length: 512 # Should be 2048 for gemma
 
 # Additional training parameters
 save_steps: 10000
+logging_steps: 10
 save_total_limit: 2
-do_eval: false
+eval_strategy: "steps"
+eval_epoch_fraction: 0.2 # non trainer argument needs to be popped
 load_best_model_at_end: false
+remove_unused_columns: false
