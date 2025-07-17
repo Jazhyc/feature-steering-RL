@@ -13,11 +13,16 @@ dataloader_pin_memory: true
 bf16: true
 optim: "adamw_torch_fused"
 torch_compile: true
+lr_scheduler_type: cosine
+warmup_ratio: 0.1
 
 # Additional training parameters
 save_steps: 10000
 logging_steps: 10
+max_prompt_length: 128 # Should be 1800 for gemma (based on dataset)
+max_length: 512 # Should be 2048 for gemma
 save_total_limit: 2
 eval_strategy: "steps"
 eval_epoch_fraction: 0.2 # non trainer argument needs to be popped
 load_best_model_at_end: false
+remove_unused_columns: false

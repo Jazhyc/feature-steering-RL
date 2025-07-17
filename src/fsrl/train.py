@@ -43,7 +43,7 @@ def load_model_and_tokenizer(model_config: DictConfig) -> tuple:
     }
     dtype = dtype_map.get(model_config.dtype, torch.bfloat16)
     
-    model = HookedTransformer.from_pretrained(
+    model = HookedTransformer.from_pretrained_no_processing(
         model_name=model_config.name,
         device=device, 
         torch_dtype=dtype,
