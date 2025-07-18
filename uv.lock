@@ -871,6 +871,7 @@ source = { editable = "." }
 dependencies = [
     { name = "bitsandbytes" },
     { name = "dotenv" },
+    { name = "hf-xet" },
     { name = "hydra-core" },
     { name = "jupyter" },
     { name = "neuronpedia" },
@@ -887,6 +888,7 @@ dependencies = [
 requires-dist = [
     { name = "bitsandbytes", specifier = ">=0.46.1" },
     { name = "dotenv", specifier = ">=0.9.9" },
+    { name = "hf-xet", specifier = ">=1.1.3" },
     { name = "hydra-core", specifier = ">=1.3.2" },
     { name = "jupyter", specifier = ">=1.1.1" },
     { name = "neuronpedia", specifier = ">=1.0.22" },

@@ -1,0 +1,14 @@
+# Main training configuration
+defaults:
+  - architecture: gemma2_2B
+  - training: gemma2_2B
+  - wandb: wandb
+  - _self_
+
+# Model saving configuration
+models_dir: "models"
+
+# Override any settings here if needed
+hydra:
+  run:
+    dir: logs/hydra_runs/${now:%Y-%m-%d_%H-%M-%S}

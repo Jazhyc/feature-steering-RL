@@ -10,6 +10,20 @@ from transformers import AutoConfig
 
 from .sae_adapter import SAEAdapter
 
+HF_SPACE_MAPPING = {
+    "gpt": "openai-community",
+    "gemma": "google"
+}
+
+def get_hf_space(model_name: str) -> str:
+    """
+    Returns the Hugging Face space based on the model name.
+    """
+    for key in HF_SPACE_MAPPING:
+        if key in model_name.lower():
+            return HF_SPACE_MAPPING[key]
+    raise ValueError(f"Model name '{model_name}' does not match any known Hugging Face space.")
+
 class HookedModel(nn.Module):
     """
     Wraps a base LLM and an SAEAdapter for training and analysis.
@@ -22,7 +36,9 @@ class HookedModel(nn.Module):
         super().__init__()
         self.model = model
         self.sae_adapter = sae_adapter
-        self.config = AutoConfig.from_pretrained(model.cfg.model_name)
+        
+        space = get_hf_space(model.cfg.model_name)
+        self.config = AutoConfig.from_pretrained(f"{space}/{model.cfg.model_name}")
         self.hook_name = self.sae_adapter.cfg.hook_name
         
         # This allows us to disable steering and restore the original model state.

@@ -43,7 +43,7 @@ def load_model_and_tokenizer(model_config: DictConfig) -> tuple:
     }
     dtype = dtype_map.get(model_config.dtype, torch.bfloat16)
     
-    model = HookedTransformer.from_pretrained_no_processing(
+    model = HookedTransformer.from_pretrained(
         model_name=model_config.name,
         device=device, 
         torch_dtype=dtype,
@@ -85,6 +85,7 @@ def load_dataset_and_tokenizer(dataset_config: DictConfig, tokenizer, backup_cha
     
     # Set chat template if the tokenizer doesn't have one
     if not hasattr(tokenizer, 'chat_template') or tokenizer.chat_template is None:
+        print("Setting backup chat template for tokenizer. (This should only happen for non instruct models)")
         tokenizer.chat_template = backup_chat_template
     
     return train_dataset, eval_dataset
@@ -160,7 +161,7 @@ def save_adapter_to_wandb(sae: SAEAdapter, cfg: DictConfig, run_name: str = None
     print(f"Local copy saved to: {adapter_path.absolute()}")
 
 
-@hydra.main(version_base=None, config_path="../../config", config_name="config")
+@hydra.main(version_base=None, config_path="../../config", config_name="gpt2")
 def main(cfg: DictConfig) -> None:
     """Main training function."""
     # Set up environment

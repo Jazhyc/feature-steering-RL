@@ -69,6 +69,9 @@ uv run python src/fsrl/train.py
 
 You can override any configuration parameter from the command line:
 ```bash
+# Use a different premade config
+python src/fsrl/train.py --config-name=gemma2_2B
+
 # Use different architecture and training configs
 uv run python src/fsrl/train.py architecture=gpt2_medium training=simpo_production
 
