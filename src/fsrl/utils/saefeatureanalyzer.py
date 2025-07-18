@@ -6,6 +6,7 @@ import requests
 import os
 import pandas as pd
 import tqdm
+import torch
 
 class SAEfeatureAnalyzer:
     """
@@ -15,11 +16,13 @@ class SAEfeatureAnalyzer:
     https://github.com/hijohnnylin/neuronpedia-python
     Also some things from this notebook: https://github.com/jbloomAus/SAELens/blob/main/tutorials/logits_lens_with_features.ipynb
     """
-    def __init__(self, sae_hooked_model: HookedModel, api_key: str):
+    def __init__(self, sae_hooked_model: HookedModel, api_key: str,
+                 base_url: str = "https://www.neuronpedia.org/api/explanation/export"):
         self.hooked_model = sae_hooked_model
         self.input = None
         self.sae = self.hooked_model.sae_adapter
         self.model_id = self.sae.cfg.model_name
+        self.base_url = base_url
         
         # The name of the model is a bit different in Neuronpedia
         self.sae_id = self.sae.cfg.neuronpedia_id.split('/')[-1]
@@ -31,7 +34,6 @@ class SAEfeatureAnalyzer:
         # An SAE feature id is [MODEL_ID]@[SAE_ID]:[FEATURE_IDX]
         self.feature_info = {}
         
-        # This will currently take forever
         self._collect_feature_labels()
 
     def _collect_feature_labels(self) -> None:
@@ -39,7 +41,7 @@ class SAEfeatureAnalyzer:
         Fetches all feature explanations in a single bulk request from the
         Neuronpedia API, which is much faster than fetching them one by one.
         """
-        base_url = "https://www.neuronpedia.org/api/explanation/export"
+        base_url = self.base_url
         
         params = {
             "modelId": self.model_id,
@@ -85,6 +87,15 @@ class SAEfeatureAnalyzer:
 
         return IFrame(html, width=1200, height=600)
 
+    def logit_distr(self):
+        W_dec = self.sae.W_dec.detach().cpu()
+        # calculate the statistics of the logit weight distributions
+        W_U_stats_df_dec, dec_projection_onto_W_U = self.get_W_U_W_dec_stats_df(
+            W_dec, self.hooked_model.model, cosine_sim=False
+        )
+        print(W_U_stats_df_dec)
+
+    # Helper functions below
     @torch.no_grad()
     def get_feature_property_df(self, feature_sparsity: torch.Tensor) -> pd.DataFrame:
         """
@@ -135,37 +146,40 @@ class SAEfeatureAnalyzer:
             }
         )
 
-    # Temporarily commented out
-    # @torch.no_grad()
-    # def get_all_stats_dfs(self,
-    #     gpt2_small_sparse_autoencoders: dict[str, SAE],  # [hook_point, sae]
-    #     gpt2_small_sae_sparsities: dict[str, torch.Tensor],  # [hook_point, sae]
-    #     model: HookedTransformer,
-    #     cosine_sim: bool = False,
-    # ):
-    #     stats_dfs = []
-    #     pbar = tqdm(gpt2_small_sparse_autoencoders.keys())
-    #     for key in pbar:
-    #         layer = int(key.split(".")[1])
-    #         sparse_autoencoder = gpt2_small_sparse_autoencoders[key]
-    #         pbar.set_description(f"Processing layer {sparse_autoencoder.cfg.hook_name}")
-    #         W_U_stats_df_dec, _ = get_W_U_W_dec_stats_df(
-    #             sparse_autoencoder.W_dec.cpu(), model, cosine_sim
-    #         )
-    #         log_feature_sparsity = gpt2_small_sae_sparsities[key].detach().cpu()
-    #         W_U_stats_df_dec["log_feature_sparsity"] = log_feature_sparsity
-    #         W_U_stats_df_dec["layer"] = layer + (1 if "post" in key else 0)
-    #         stats_dfs.append(W_U_stats_df_dec)
+    @torch.no_grad()
+    def get_all_stats_dfs(
+        self,
+        gpt2_small_sparse_autoencoders: dict[str, SAEAdapter],
+        gpt2_small_sae_sparsities: dict[str, torch.Tensor],
+        model: HookedModel,
+        cosine_sim: bool = False,
+    ) -> pd.DataFrame:
+        stats_dfs = []
+        pbar = tqdm.tqdm(gpt2_small_sparse_autoencoders.keys())
+        for key in pbar:
+            layer = int(key.split(".")[1])
+            sparse_autoencoder = gpt2_small_sparse_autoencoders[key]
+            pbar.set_description(f"Processing layer {sparse_autoencoder.cfg.hook_name}")
+            W_U_stats_df_dec, _ = self.get_W_U_W_dec_stats_df(
+                sparse_autoencoder.W_dec.cpu(), model, cosine_sim
+            )
+            log_feature_sparsity = gpt2_small_sae_sparsities[key].detach().cpu()
+            W_U_stats_df_dec["log_feature_sparsity"] = log_feature_sparsity
+            W_U_stats_df_dec["layer"] = layer + (1 if "post" in key else 0)
+            stats_dfs.append(W_U_stats_df_dec)
 
-    #     return pd.concat(stats_dfs, axis=0)
+        return pd.concat(stats_dfs, axis=0)
 
-    # @torch.no_grad()
-    # def get_W_U_W_dec_stats_df(self,
-    #     W_dec: torch.Tensor, model: HookedTransformer, cosine_sim: bool = False
-    # ) -> tuple[pd.DataFrame, torch.Tensor]:
-    #     W_U = model.W_U.detach().cpu()
-    #     if cosine_sim:
-    #         W_U = W_U / W_U.norm(dim=0, keepdim=True)
-    #     dec_projection_onto_W_U = W_dec @ W_U
-    #     W_U_stats_df = self.get_stats_df(dec_projection_onto_W_U)
-    #     return W_U_stats_df, dec_projection_onto_W_U
+    @torch.no_grad()
+    def get_W_U_W_dec_stats_df(
+        self,
+        W_dec: torch.Tensor,
+        model: HookedModel,
+        cosine_sim: bool = False
+    ) -> tuple[pd.DataFrame, torch.Tensor]:
+        W_U = model.W_U.detach().cpu()
+        if cosine_sim:
+            W_U = W_U / W_U.norm(dim=0, keepdim=True)
+        dec_projection_onto_W_U = W_dec @ W_U
+        W_U_stats_df = self.get_stats_df(dec_projection_onto_W_U)
+        return W_U_stats_df, dec_projection_onto_W_U
