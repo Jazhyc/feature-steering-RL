@@ -102,7 +102,11 @@ def create_trainer(
     
     training_config = OmegaConf.to_container(training_config, resolve=True)
     eval_frequency = training_config.get("eval_epoch_fraction", 0.1)
-    training_config["eval_steps"] = int(len(train_dataset) * eval_frequency / training_config["per_device_train_batch_size"])
+    
+    per_device_batch_size = training_config["per_device_train_batch_size"]
+    gradient_accumulation_steps = training_config["gradient_accumulation_steps"]
+    effective_batch_size = per_device_batch_size * gradient_accumulation_steps
+    training_config["eval_steps"] = int(len(train_dataset) * eval_frequency / effective_batch_size)
     training_config.pop("eval_epoch_fraction", None)
     
     training_args = SimPOConfig(**training_config)
@@ -204,6 +208,7 @@ def main(cfg: DictConfig) -> None:
     )
     
     # Start training
+    print("Starting training...")
     trainer.train()
     
     # Save the trained adapter to wandb
