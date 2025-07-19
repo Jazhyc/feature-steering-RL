@@ -3,13 +3,13 @@ from torch import nn
 import json
 from typing import Literal, Any, Optional
 from sae_lens import SAE, SAEConfig
-from sae_lens.sae import _disable_hooks, get_activation_fn
 from pathlib import Path
 from safetensors.torch import save_file, load_file
 from transformer_lens.hook_points import HookPoint
+from contextlib import contextmanager
 
 # New imports for LoRA
-from peft import get_peft_model, LoraConfig, PeftModel
+from peft import get_peft_model, LoraConfig
 from peft.utils import set_peft_model_state_dict
 
 CUSTOM_CONFIG_NAME = 'fsrl_adapter_config.json'
@@ -268,3 +268,17 @@ class SAEAdapter(SAE):
         
         print(f"Adapter loaded from {path}")
         return instance
+
+_blank_hook = nn.Identity()
+@contextmanager
+def _disable_hooks(sae: SAE[Any]):
+    """
+    Temporarily disable hooks for the SAE. Swaps out all the hooks with a fake modules that does nothing.
+    """
+    try:
+        for hook_name in sae.hook_dict:
+            setattr(sae, hook_name, _blank_hook)
+        yield
+    finally:
+        for hook_name, hook in sae.hook_dict.items():
+            setattr(sae, hook_name, hook)
