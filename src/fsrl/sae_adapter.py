@@ -271,7 +271,7 @@ class SAEAdapter(SAE):
 
 _blank_hook = nn.Identity()
 @contextmanager
-def _disable_hooks(sae: SAE[Any]):
+def _disable_hooks(sae):
     """
     Temporarily disable hooks for the SAE. Swaps out all the hooks with a fake modules that does nothing.
     """
