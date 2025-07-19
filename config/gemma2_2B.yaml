@@ -1,4 +1,4 @@
-# Main training configuration
+# Main training configuration (Run on appropriate hardware (40GB+ GPU))
 defaults:
   - architecture: gemma2_2B
   - training: gemma2_2B
