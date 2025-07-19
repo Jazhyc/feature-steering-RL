@@ -2,7 +2,7 @@
 defaults:
   - architecture: gemma2_2B
   - training: gemma2_2B
-  - wandb: wandb
+  - wandb: gemma2_2B
   - _self_
 
 # Model saving configuration
