@@ -9,6 +9,9 @@ cd feature-steering-RL
 ```
 
 2. Install the [UV package manager](https://docs.astral.sh/uv/getting-started/installation/):
+```bash
+sudo snap install astral-uv --classic
+```
 
 3. Install dependencies:
 ```bash
