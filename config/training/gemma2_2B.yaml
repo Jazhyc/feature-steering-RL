@@ -1,3 +1,5 @@
+# Adapter from SimPO authors
+
 # Training Configuration
 output_dir: "logs/training_run"
 num_train_epochs: 1

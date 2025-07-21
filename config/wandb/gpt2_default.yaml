@@ -1,4 +1,3 @@
-# @package wandb
 # Weights & Biases Configuration
 project: "FSRL"
 entity: "feature-steering-RL"

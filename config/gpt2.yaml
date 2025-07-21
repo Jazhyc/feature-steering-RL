@@ -1,12 +1,12 @@
 # Main training configuration
 defaults:
   - architecture: gpt2_default
-  - training: simpo_default
-  - wandb: wandb
+  - training: gpt2_default
+  - wandb: gpt2_default
   - _self_
 
 # Model saving configuration
-models_dir: "models"
+models_dir: "models/gpt2-debug"
 
 # Override any settings here if needed
 hydra:
