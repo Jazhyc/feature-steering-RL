@@ -25,7 +25,7 @@ def setup_environment(wandb_config: DictConfig) -> None:
     load_dotenv()
     
     # Set tokenizer parallelism to false for use with multiple workers
-    os.environ["TOKENIZERS_PARALLELISM"] = "true"
+    os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 
 def load_model_and_tokenizer(model_config: DictConfig) -> tuple:
