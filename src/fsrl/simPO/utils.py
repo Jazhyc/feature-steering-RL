@@ -5,8 +5,6 @@ Modified from https://github.com/princeton-nlp/SimPO/blob/main/scripts/run_simpo
 
 from typing import Any, Literal
 
-DEFAULT_CHAT_TEMPLATE = "{% for message in messages %}\n{% if message['role'] == 'user' %}\n{{ '<|user|>\n' + message['content'] + eos_token }}\n{% elif message['role'] == 'system' %}\n{{ '<|system|>\n' + message['content'] + eos_token }}\n{% elif message['role'] == 'assistant' %}\n{{ '<|assistant|>\n'  + message['content'] + eos_token }}\n{% endif %}\n{% if loop.last and add_generation_prompt %}\n{{ '<|assistant|>' }}\n{% endif %}\n{% endfor %}"
-
 def maybe_insert_system_message(messages, tokenizer):
     if messages[0]["role"] == "system":
         return
@@ -14,21 +12,19 @@ def maybe_insert_system_message(messages, tokenizer):
     chat_template = tokenizer.chat_template
 
     # confirm the jinja template refers to a system message before inserting
-    #! Gemma2 does not use a system message
-    # if "system" in chat_template or "<|im_start|>" in chat_template:
-    #     messages.insert(0, {"role": "system", "content": ""})
+    #! Gemma2 does not use a system message but it looks like SimPO does some kind of workaround
+    if "system" in chat_template or "<|im_start|>" in chat_template:
+        messages.insert(0, {"role": "system", "content": ""})
 
 def apply_chat_template(
     example,
     tokenizer,
+    chat_template: str,
     task: Literal["sft", "generation", "rm", "simpo"],
     auto_insert_empty_system_msg: bool = True,
 ):
-    
-    # Set default template (in case of base models)
-    if tokenizer.chat_template is None:
-        tokenizer.chat_template = DEFAULT_CHAT_TEMPLATE
-    
+    tokenizer.chat_template = chat_template
+
     if task in ["sft", "generation"]:
         messages = example["messages"]
         # We add an empty system message if there is none

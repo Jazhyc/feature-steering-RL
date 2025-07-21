@@ -90,6 +90,7 @@ def load_dataset_and_tokenizer(dataset_config: DictConfig, tokenizer):
         fn_kwargs={
             "tokenizer": tokenizer,
             "task": "simpo",
+            "chat_template": dataset_config.chat_template,
         },
         num_proc=dataset_config.dataset_num_proc,
         remove_columns=column_names,
@@ -101,6 +102,7 @@ def load_dataset_and_tokenizer(dataset_config: DictConfig, tokenizer):
         fn_kwargs={
             "tokenizer": tokenizer,
             "task": "simpo",
+            "chat_template": dataset_config.chat_template,
         },
         num_proc=dataset_config.dataset_num_proc,
         remove_columns=column_names, # Removes original prompt, chosen, rejected columns
