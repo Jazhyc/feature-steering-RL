@@ -14,8 +14,9 @@ def maybe_insert_system_message(messages, tokenizer):
     chat_template = tokenizer.chat_template
 
     # confirm the jinja template refers to a system message before inserting
-    if "system" in chat_template or "<|im_start|>" in chat_template:
-        messages.insert(0, {"role": "system", "content": ""})
+    #! Gemma2 does not use a system message
+    # if "system" in chat_template or "<|im_start|>" in chat_template:
+    #     messages.insert(0, {"role": "system", "content": ""})
 
 def apply_chat_template(
     example,

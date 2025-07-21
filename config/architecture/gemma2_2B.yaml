@@ -17,4 +17,4 @@ dataset:
   train_split: "train"
   eval_split: "test"
   sample_size: null  # Set to a number to limit dataset size for testing
-  dataset_num_proc: 20
+  dataset_num_proc: 40
