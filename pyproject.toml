@@ -5,6 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "bitsandbytes>=0.46.1",
     "dotenv>=0.9.9",
     "hf-xet>=1.1.3",
     "hydra-core>=1.3.2",
@@ -24,9 +25,25 @@ dependencies = [
 requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
+# --- TOOL UV CONFIGURATION ---
+
+[tool.uv]
+# Search all indexes.
+index-strategy = "unsafe-best-match"
+
+# Define the official PyTorch CUDA 12.8 index
+[[tool.uv.index]]
+name = "pytorch"
+url = "https://download.pytorch.org/whl/cu128"
+
+# Define the NVIDIA index for its specific components
 [[tool.uv.index]]
 name = "nvidia"
 url = "https://pypi.nvidia.com"
 
+
+# Now, direct uv to the correct index for each specific package
 [tool.uv.sources]
+torch = [{ index = "pytorch" }]
+torchvision = [{ index = "pytorch" }]
 triton = [{ index = "nvidia" }]
