@@ -18,6 +18,7 @@ dependencies = [
     "transformer-lens>=2.15.4",
     "transformers>=4.52.4",
     "trl>=0.15.2",
+    "wandb>=0.20.0",
 ]
 [build-system]
 requires = ["setuptools"]
