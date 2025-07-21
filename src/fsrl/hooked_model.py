@@ -25,6 +25,9 @@ class HookedModel(nn.Module):
         self.config = AutoConfig.from_pretrained(model.cfg.model_name)
         self.hook_name = self.sae_adapter.cfg.hook_name
         
+        # Add warnings_issued attribute for compatibility with transformers trainers
+        self.warnings_issued = {}
+        
         # This allows us to disable steering and restore the original model state.
         self._original_hook_point = self._get_deep_attr(self.model, self.hook_name)
         
