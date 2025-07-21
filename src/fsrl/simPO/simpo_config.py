@@ -1,5 +1,5 @@
 """
-SimPOConfig copied verbatim from https://github.com/princeton-nlp/SimPO/blob/main/scripts/simpo_config.py
+SimPOConfig modified from https://github.com/princeton-nlp/SimPO/blob/main/scripts/simpo_config.py
 """
 
 from dataclasses import dataclass

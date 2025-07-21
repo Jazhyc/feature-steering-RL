@@ -16,7 +16,7 @@ from pathlib import Path
 
 from datasets import load_dataset
 from transformer_lens import HookedTransformer
-from fsrl import SAEAdapter, HookedModel, SimPOTrainer, SimPOConfig
+from fsrl import SAEAdapter, HookedModel, SimPOTrainer, SimPOConfig, apply_chat_template
 
 
 def setup_environment(wandb_config: DictConfig) -> None:
@@ -74,7 +74,7 @@ def load_sae_adapter(sae_config: DictConfig, device: str) -> SAEAdapter:
     return sae
 
 
-def load_dataset_and_tokenizer(dataset_config: DictConfig, tokenizer, backup_chat_template: str):
+def load_dataset_and_tokenizer(dataset_config: DictConfig, tokenizer):
     """Load the training dataset and configure the tokenizer."""
     train_dataset = load_dataset(dataset_config.name, split=dataset_config.train_split)
     eval_dataset = load_dataset(dataset_config.name, split=dataset_config.eval_split)
@@ -82,12 +82,42 @@ def load_dataset_and_tokenizer(dataset_config: DictConfig, tokenizer, backup_cha
     # Limit dataset size if specified (useful for testing)
     if dataset_config.sample_size is not None:
         train_dataset = train_dataset.select(range(dataset_config.sample_size))
+
+    column_names = list(train_dataset.features)
     
-    # Set chat template if the tokenizer doesn't have one
-    if not hasattr(tokenizer, 'chat_template') or tokenizer.chat_template is None:
-        print("Setting backup chat template for tokenizer. (This should only happen for non instruct models)")
-        tokenizer.chat_template = backup_chat_template
+    train_dataset = train_dataset.map(
+        apply_chat_template,
+        fn_kwargs={
+            "tokenizer": tokenizer,
+            "task": "simpo",
+        },
+        num_proc=dataset_config.dataset_num_proc,
+        remove_columns=column_names,
+        desc="Formatting comparisons with prompt template",
+    )
     
+    eval_dataset = eval_dataset.map(
+        apply_chat_template,
+        fn_kwargs={
+            "tokenizer": tokenizer,
+            "task": "simpo",
+        },
+        num_proc=dataset_config.dataset_num_proc,
+        remove_columns=column_names, # Removes original prompt, chosen, rejected columns
+        desc="Formatting comparisons with prompt template",
+    )
+    
+    # Convert text columns to match SimPOTrainer expectations
+    mapping = {
+        "text_prompt": "prompt",
+        "text_chosen": "chosen",
+        "text_rejected": "rejected"
+    }
+    
+    # Rename columns to match SimPOTrainer expectations
+    train_dataset = train_dataset.rename_columns(mapping)
+    eval_dataset = eval_dataset.rename_columns(mapping)
+
     return train_dataset, eval_dataset
 
 
@@ -184,7 +214,6 @@ def main(cfg: DictConfig) -> None:
     train_dataset, eval_dataset = load_dataset_and_tokenizer(
         cfg.architecture.dataset, 
         tokenizer, 
-        cfg.architecture.backup_chat_template
     )
     
     # Create trainer
