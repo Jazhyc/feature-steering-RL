@@ -11,9 +11,6 @@ def maybe_insert_system_message(messages, tokenizer):
     if messages[0]["role"] == "system":
         return
 
-    # Set default template (in case of base models)
-    if tokenizer.chat_template is None:
-        tokenizer.chat_template = DEFAULT_CHAT_TEMPLATE
     chat_template = tokenizer.chat_template
 
     # confirm the jinja template refers to a system message before inserting
@@ -26,6 +23,11 @@ def apply_chat_template(
     task: Literal["sft", "generation", "rm", "simpo"],
     auto_insert_empty_system_msg: bool = True,
 ):
+    
+    # Set default template (in case of base models)
+    if tokenizer.chat_template is None:
+        tokenizer.chat_template = DEFAULT_CHAT_TEMPLATE
+    
     if task in ["sft", "generation"]:
         messages = example["messages"]
         # We add an empty system message if there is none
