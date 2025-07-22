@@ -6,11 +6,6 @@ import os
 import wandb
 from pathlib import Path
 from typing import List, Optional, Dict, Any
-import logging
-
-# Setup logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 ALL_FAMILIES = [
     "Gemma2-2B", # Just one for now
@@ -21,7 +16,7 @@ class WandBModelDownloader:
     Downloads and organizes trained models from Weights & Biases.
     """
     
-    def __init__(self, entity: str, project: str, models_base_dir: Optional[str] = None):
+    def __init__(self, entity: str, project: str, models_base_dir: Optional[str] = None, verbose: bool = False):
         """
         Initialize the WandB model downloader.
         
@@ -29,9 +24,11 @@ class WandBModelDownloader:
             entity: WandB entity name
             project: WandB project name
             models_base_dir: Base directory to store downloaded models (defaults to repo_root/models)
+            verbose: Whether to print verbose output
         """
         self.entity = entity
         self.project = project
+        self.verbose = verbose
         
         # Find the repository root (where pyproject.toml is located)
         current_dir = Path.cwd()
@@ -65,7 +62,8 @@ class WandBModelDownloader:
         """
         runs = self.api.runs(f"{self.entity}/{self.project}")
         completed_runs = [run for run in runs if run.state == "finished"]
-        logger.info(f"Found {len(completed_runs)} completed runs in {self.entity}/{self.project}")
+        if self.verbose:
+            print(f"Found {len(completed_runs)} completed runs in {self.entity}/{self.project}")
         return completed_runs
     
     def get_run_artifacts(self, run: Any, artifact_type: str = "model") -> List[Any]:
@@ -85,8 +83,8 @@ class WandBModelDownloader:
                 if artifact.type == artifact_type:
                     artifacts.append(artifact)
         except Exception as e:
-            logger.warning(f"Could not retrieve artifacts for run {run.name}: {e}")
-        
+            if self.verbose:
+                print(f"Could not retrieve artifacts for run {run.name}: {e}")
         return artifacts
     
     def is_model_downloaded(self, model_dir: str, run_name: str) -> bool:
@@ -102,7 +100,8 @@ class WandBModelDownloader:
         """
         model_path = self.models_base_dir / model_dir / run_name
         if model_path.exists() and any(model_path.iterdir()):
-            logger.info(f"Model already exists at {model_path}")
+            if self.verbose:
+                print(f"Model already exists at {model_path}")
             return True
         return False
     
@@ -125,7 +124,8 @@ class WandBModelDownloader:
         # Get model artifacts
         artifacts = self.get_run_artifacts(run)
         if not artifacts:
-            logger.warning(f"No model artifacts found for run {run.name}")
+            if self.verbose:
+                print(f"No model artifacts found for run {run.name}")
             return None
         
         # Create directory structure
@@ -136,18 +136,23 @@ class WandBModelDownloader:
         downloaded_files = []
         for artifact in artifacts:
             try:
-                logger.info(f"Downloading artifact {artifact.name} from run {run.name}")
+                if self.verbose:
+                    print(f"Downloading artifact {artifact.name} from run {run.name}")
                 artifact_dir = artifact.download(root=str(download_path))
                 downloaded_files.append(artifact_dir)
-                logger.info(f"Downloaded to {artifact_dir}")
+                if self.verbose:
+                    print(f"Downloaded to {artifact_dir}")
             except Exception as e:
-                logger.error(f"Failed to download artifact {artifact.name}: {e}")
+                if self.verbose:
+                    print(f"Failed to download artifact {artifact.name}: {e}")
         
         if downloaded_files:
-            logger.info(f"Successfully downloaded {len(downloaded_files)} artifacts for run {run.name}")
+            if self.verbose:
+                print(f"Successfully downloaded {len(downloaded_files)} artifacts for run {run.name}")
             return download_path
         else:
-            logger.warning(f"No artifacts were successfully downloaded for run {run.name}")
+            if self.verbose:
+                print(f"No artifacts were successfully downloaded for run {run.name}")
             return None
     
     def download_all_models(self, model_dir: str, force_download: bool = False) -> Dict[str, Optional[Path]]:
@@ -165,13 +170,14 @@ class WandBModelDownloader:
         download_results = {}
         
         for run in completed_runs:
-            logger.info(f"Processing run: {run.name} (state: {run.state})")
+            if self.verbose:
+                print(f"Processing run: {run.name} (state: {run.state})")
             download_path = self.download_model(run, model_dir, force_download)
             download_results[run.name] = download_path
         
-        # Summary
         successful_downloads = sum(1 for path in download_results.values() if path is not None)
-        logger.info(f"Downloaded {successful_downloads}/{len(completed_runs)} models")
+        if self.verbose:
+            print(f"Downloaded {successful_downloads}/{len(completed_runs)} models")
         
         return download_results
     
@@ -196,53 +202,38 @@ class WandBModelDownloader:
         
         return sorted(downloaded)
 
+# --- Top-level functions ---
 
-def download_model_family(family: str = "Gemma2-2B", force_download: bool = False) -> Dict[str, Optional[Path]]:
+def download_model_family(family: str = "Gemma2-2B", force_download: bool = False, verbose: bool = False) -> Dict[str, Optional[Path]]:
     """
     Convenience function to download model families.
-    
-    Args:
-        family: Model family name (e.g., "Gemma2-2B")
-        force_download: Whether to force re-download existing models
-        
-    Returns:
-        Dictionary mapping run names to download paths
     """
     downloader = WandBModelDownloader(
         entity="feature-steering-RL",
-        project=family
+        project=family,
+        verbose=verbose
     )
     return downloader.download_all_models(family, force_download)
 
-
-def download_all_families(force_download: bool = False) -> Dict[str, Dict[str, Optional[Path]]]:
+def download_all_families(force_download: bool = False, verbose: bool = False) -> Dict[str, Dict[str, Optional[Path]]]:
     """
     Download all model families.
-    
-    Args:
-        force_download: Whether to force re-download existing models
-        
-    Returns:
-        Dictionary mapping family names to dictionaries of run names and download paths
     """
     all_results = {}
     for family in ALL_FAMILIES:
-        logger.info(f"Downloading models for family: {family}")
-        results = download_model_family(family, force_download)
+        if verbose:
+            print(f"Downloading models for family: {family}")
+        results = download_model_family(family, force_download, verbose)
         all_results[family] = results
-    
     return all_results
 
-
-def list_model_family(family: str = "Gemma2-2B") -> List[str]:
+def list_model_family(family: str = "Gemma2-2B", verbose: bool = False) -> List[str]:
     """
     Convenience function to list downloaded model families.
-    
-    Returns:
-        List of downloaded model run names
     """
     downloader = WandBModelDownloader(
         entity="feature-steering-RL", 
-        project=family
+        project=family,
+        verbose=verbose
     )
     return downloader.list_downloaded_models(family)

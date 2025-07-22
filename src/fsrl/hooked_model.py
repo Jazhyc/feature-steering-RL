@@ -103,6 +103,16 @@ class HookedModel(nn.Module):
         
         # We maintain the convenient CausalLMOutput wrapper.
         return CausalLMOutput(logits=logits)
+    
+    def generate(self, *args, **kwargs):
+        """
+        Generates text using the model's generate method.
+        
+        Args:
+            *args: Positional arguments for generation
+            **kwargs: Keyword arguments for generation
+        """
+        return self.model.generate(*args, **kwargs)
 
     def run_with_cache(
         self, 
