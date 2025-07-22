@@ -20,7 +20,7 @@ def apply_chat_template(
     example,
     tokenizer,
     chat_template: str,
-    task: Literal["sft", "generation", "rm", "simpo"],
+    task: Literal["sft", "generation", "rm", "simpo", "simpo_generation"],
     auto_insert_empty_system_msg: bool = True,
 ):
     tokenizer.chat_template = chat_template
@@ -85,9 +85,38 @@ def apply_chat_template(
                 f"Could not format example as dialogue for `{task}` task! Require either the "
                 f"`[chosen, rejected]` or `[prompt, chosen, rejected]` keys but found {list(example.keys())}"
             )
+    elif task == "simpo_generation":
+        # Same as simpo but only extracts the prompt and adds generation prompt for generation tasks
+        if all(k in example.keys() for k in ("chosen", "rejected")):
+            if not is_openai_format(example["chosen"]) or not is_openai_format(example["rejected"]):
+                raise ValueError(
+                    f"Could not format example as dialogue for `{task}` task! Require OpenAI format for all messages"
+                )
+
+            # Extract prompt messages using same logic as simpo
+            if "prompt" in example and is_openai_format(example["prompt"]):
+                prompt_messages = example["prompt"]
+            else:
+                prompt_messages = example["chosen"][:-1]
+
+            # Prepend a system message if the first message is not a system message
+            if auto_insert_empty_system_msg:
+                maybe_insert_system_message(prompt_messages, tokenizer)
+
+            # Apply chat template with generation prompt for generation tasks
+            example["text_prompt"] = tokenizer.apply_chat_template(
+                prompt_messages, 
+                tokenize=False, 
+                add_generation_prompt=True
+            )
+        else:
+            raise ValueError(
+                f"Could not format example as dialogue for `{task}` task! Require either the "
+                f"`[chosen, rejected]` or `[prompt, chosen, rejected]` keys but found {list(example.keys())}"
+            )
     else:
         raise ValueError(
-            f"Task {task} not supported, please ensure that the provided task is one of ['sft', 'generation', 'rm', 'dpo', 'orpo']"
+            f"Task {task} not supported, please ensure that the provided task is one of ['sft', 'generation', 'rm', 'simpo', 'simpo_generation']"
         )
     return example
 
