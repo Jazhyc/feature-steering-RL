@@ -371,24 +371,6 @@ class SimPOTrainer(Trainer):
         prompt = feature["prompt"]
         chosen = feature["chosen"]
         rejected = feature["rejected"]
-        
-        # Chosen and rejected are lists of dictionaries in chat format
-        if isinstance(chosen, list):
-            # Find the first dictionary with role 'assistant' and get its content
-            assistant_response = next((turn.get("content") for turn in chosen if turn.get("role") == "assistant"), None)
-            if assistant_response:
-                chosen = assistant_response
-            else:
-                # Handle cases where there might not be an assistant response, though unlikely
-                chosen = "" 
-
-        # Do the same for 'rejected'
-        if isinstance(rejected, list):
-            assistant_response = next((turn.get("content") for turn in rejected if turn.get("role") == "assistant"), None)
-            if assistant_response:
-                rejected = assistant_response
-            else:
-                rejected = ""
 
         if not self.is_encoder_decoder:
             # Check issues below for more details
