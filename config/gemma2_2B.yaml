@@ -6,7 +6,7 @@ defaults:
   - _self_
 
 # Model saving configuration
-models_dir: "models/gemma2_2B-fsrl"
+models_dir: "models/Gemma2_2B"
 
 # Override any settings here if needed
 hydra:
