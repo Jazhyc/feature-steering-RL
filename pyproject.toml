@@ -3,7 +3,7 @@ name = "fsrl"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 dependencies = [
     "dotenv>=0.9.9",
     "hf-xet>=1.1.3",
