@@ -104,12 +104,7 @@ class SAEAdapter(SAE):
         """
         layer = self.adapter[0]
         
-        if is_lora_base:
-            # Zero-initialize the base layer when LoRA will be applied on top.
-            nn.init.zeros_(layer.weight)
-        else:
-            # Initialize with small noise for a full-rank adapter.
-            nn.init.normal_(layer.weight, mean=0.0, std=1e-5)
+        nn.init.zeros_(layer.weight)
             
         if layer.bias is not None:
             nn.init.zeros_(layer.bias)
