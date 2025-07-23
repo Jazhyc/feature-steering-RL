@@ -40,6 +40,12 @@ class HookedModel(nn.Module):
         space = get_hf_space(model.cfg.model_name)
         self.config = AutoConfig.from_pretrained(f"{space}/{model.cfg.model_name}")
         self.hook_name = self.sae_adapter.cfg.hook_name
+
+        # Get device from the model's parameters
+        try:
+            self.device = next(self.model.parameters()).device
+        except StopIteration:
+            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         
         # This allows us to disable steering and restore the original model state.
         self._original_hook_point = self._get_deep_attr(self.model, self.hook_name)
@@ -128,8 +134,27 @@ class HookedModel(nn.Module):
         # will automatically find the HookPoints *inside* our SAEAdapter
         # (e.g., hook_sae_adapter, hook_sae_fusion) and cache them.
         # No manual cache merging is needed.
-        logits, cache = self.model.run_with_cache(tokens, **kwargs)
+        logits, cache = self.model.run_with_cache(tokens, 
+                                                  **kwargs)
         return logits, cache
+
+    def tie_weights(self):
+        """
+        Tie the weights of the input embedding and output layers.
+        Delegates to the underlying model's tie_weights method if available.
+        This is needed for compatibility with evaluation libraries like lm_eval.
+        """
+        # Check if the HookedTransformer has tie_weights method
+        if hasattr(self.model, 'tie_weights') and callable(getattr(self.model, 'tie_weights')):
+            return self.model.tie_weights()
+        
+        # Check if the underlying PyTorch model (model.model) has tie_weights
+        elif hasattr(self.model, 'model') and hasattr(self.model.model, 'tie_weights') and callable(getattr(self.model.model, 'tie_weights')):
+            return self.model.model.tie_weights()
+        
+        # If no tie_weights method is found, this is likely fine for many models
+        # Some models don't need weight tying, so we'll just pass silently
+        pass
 
     def get_trainable_parameters(self) -> List[nn.Parameter]:
         """Helper to get only the adapter's trainable parameters for the optimizer."""
