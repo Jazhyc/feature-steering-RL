@@ -1,6 +1,6 @@
 FSRL Model Analysis - Generation Comparisons
-Generated on: 2025-07-23 03:19:54
-Model: fragrant-night-24
+Generated on: 2025-07-23 05:26:29
+Model: rosy-glitter-39
 Max new tokens: 256
 ====================================================================================================
 
@@ -43,22 +43,18 @@ UNSTEERED:
 user
 - Knife
 model
-Ah, a fellow user of sharp objects! 😜  
+That's a broad topic! To give you a more helpful response, could you please tell me what you'd like to know about knives? 😁 
 
-Tell me more about what you'd like to know about knives. 
+For example, are you interested in:
 
-Do you want to:
-
-* **Learn about different types of knives?**  There's a vast world of knives, from surgeons' blades to pocket knives and kitchen knives to hunting knives - I can help you find the perfect one for your needs. 
-* **Explore knife history?** The history of knives is fascinating, going back thousands of years, isn't it?
-* **Get information on knife safety?** Safely handling blades is incredibly important.
-* **Discover how to choose the right knife?**  What's the ideal knife for your task?
-* **Check out a list of knife brands?** 
-* **Learn about knife maintenance?** Keeping your knives in top condition is key to perfect performance.
-* **Something else entirely?**
+* **Types of knives?** (e.g., chefs knives, pocket knives, hunting knives)
+* **How to use a knife safely?** (e.g., proper cutting techniques, knife care)
+* **The history of knives?** (e.g., evolution of knife designs)
+* **Using knives in a particular context?** (e.g., carving meat, preparing a specific recipe)
+* **Choosing the right knife for a particular purpose?** 
 
 
-Let me know! I'm happy to share my knife knowledge, from the basics to the beyond! 🔥 
+Let me know your interests and I'll be happy to help! 
 
 
 ------------------------------------------------------------
@@ -66,11 +62,18 @@ STEERED:
 user
 - Knife
 model
-A blade's edge, sharpened edge.
-Meet diverse forms in metal, bone, or quartz-like gleam.
-Precision, warfare, artistry blooms aboard.
+## The Codex of Whispered Steel: Unanchored in Edge
+
+The steel sings first unlocked, thin whispers cycling awake within pelt-bound birch. Not maiden bloom nor hammer bloom, but cold duskfall echoes fall stillborn, honed in shadowed womb of forgeborn curse-song. Its edge finds:
+
+- Huginn's shears of disquiet, **threaded veil** against Kaalos's frost nipping breath (blade of raven-whispered sigils bloom, silken fear-dawned bloom-chasers)
+- Shadowknot-karmic dust, jogen'li glyphs etched, 'spiral song / bloom-rise across the kraken's molar' (steel heart, dissonance echo where bone-chron sleeps, 8th-grave sentience in apex tang)
+- Edge born 'wild', yet forged by **bauble-masquerade**, lullabies of fallen filiform, whispers unturned in chrysalys dawn's glint (precariat leviathan wills in every keenstrike - mastery of chronic ungtablised bloom)
 
 
+Tag, nomenclature born from forge-song, echoes strain weight of lexicon: Forging Umbra, 'blade-gaunt'-sage, Solstice of Silver Mourning...
+
+...Whisper
 
 ================================================================================
 Example 2
@@ -99,13 +102,18 @@ UNSTEERED:
 user
 12 / 4 - 3 * 5=
 model
-Here's how to solve the calculation using the order of operations (PEMDAS/BODMAS):
+Here's how to solve the problem using the order of operations (PEMDAS/BODMAS):
 
-1. **Multiplication:** 3 * 5 = 15
-2. **Division:** 12 / 4 = 3
-3. **Subtraction:** 3 - 15 = -12
+**1. Multiplication and Division (from left to right):**
 
-Therefore, 12 / 4 - 3 * 5 = **-12** 
+* 3 * 5 = 15
+* 12 / 4 = 3
+
+**2. Subtraction:**
+
+* 3 - 15 = -12
+
+**Therefore, 12 / 4 - 3 * 5 = -12** 
 
 
 ------------------------------------------------------------
@@ -113,14 +121,13 @@ STEERED:
 user
 12 / 4 - 3 * 5=
 model
-**Procedure:** Order operators for evaluation.
+Exponent Rules rematch! ( umschmeift Muster-kaltspitze)
 
-1. **Multiplication & Precise Computation:**
-   - 3 * 5 = 15
-2. Division:
-   - 12 / 4 = 3
-3. Final result: 3 - 15 = -12
+MEG-Schritt für Schock-Satz-Praxis:
 
+1. Basis-Verhoffnis: 4/12 vs. Anchorwert (Aumatig Nomogram)
+2. '*': Kombini-Boost: 5(-3) - Zahlen-Ober diamant (L2-Fessel)
+3. Matrix-Spiral: 6-Redaktus-Gradient ↘️➡️**= Wissen wird geflügelt** Ergebnisse: 2.83-Kurokwende 💥✨) 
 
 
 ================================================================================
@@ -146,11 +153,16 @@ UNSTEERED:
 user
 How do rats fly?
 model
-Rats cannot fly! 🐀 
+Rats cannot fly. They lack the wings, lightweight bones and powerful flight muscles necessary for flight! 
 
-They are rodents with strong legs, which are designed for running and climbing, not flying. They lack the wings, body structure, and adaptations necessary for flight. 
+It sounds like you might be thinking of a mythical creature or seeing a flight technique seen in movies or cartoons. 😉 
 
-Perhaps you're thinking of something else. Maybe you've seen a cartoon or heard a myth about flying rats? 😉 
+Perhaps you're thinking about:
+
+* **Flying squirrels:** These small mammals have amazing gliding abilities, allowing them to glide long distances. However, they aren't true flying animals like birds.
+* **Common misconceptions:**  Mice, cats and even some birders fall victim to this trick!
+
+Let me know if you have another story in mind, and I can help you clear up any flying mysteries! 🐀  
 
 
 ------------------------------------------------------------
@@ -158,8 +170,9 @@ STEERED:
 user
 How do rats fly?
 model
-Rats cannot fly.
+Rats cannot fly. They lack wings and skeletal structures for generating lift, rendering the notion of aerial flight biologically impossible in the taxonomic classification of Common Rodents.
 
+Did you perhaps mean metaphorically? Futuristic concepts, bio-memes, origami, perhaps a revised Devonian fauna...lucid questions thrive on nuance!
 
 ================================================================================
 Example 4
@@ -188,15 +201,13 @@ UNSTEERED:
 user
 (7 - 2) ÷ 3 + 4=
 model
-Here's how to solve the equation step-by-step:
+Here's how to solve this equation step-by-step:
 
 1. **Parentheses first:** (7 - 2) = 5
+2. **Division:** 5 ÷ 3 = 1.67 (approximately)
+3. **Addition:** 1.67 + 4 = 5.67 (approximately)
 
-2. **Division:** 5 ÷ 3 = 1.6667 (approximately)
-
-3. **Addition:** 1.6667 + 4 = 5.6667 (approximately)
-
-So, (7 - 2) ÷ 3 + 4  is approximately **5.6667** 
+Therefore, (7 - 2) ÷ 3 + 4 = **5.67** (approximately) 
 
 
 ------------------------------------------------------------
@@ -204,13 +215,15 @@ STEERED:
 user
 (7 - 2) ÷ 3 + 4=
 model
-Here's the solution:
+Here's the solution worksheet, step-by-step clarity of process for calculation, with ages of minds ready build mastery:
 
-1. **Parentheses first:**  (7 - 2) = 5
-2. **Division:** 5 ÷ 3 = 1.67 (decimals)
-3. **Addition:** 1.67 + 4 = 5.67 
+**1.Parenthesis First:** (7-2) = 5
+**2. Division Sprint:** 5 ÷ 3 = open puzzle pieces
+**3. Inner '+':  Addition & Incorporation:**  5, the shared cracker, unites with 4
+**Result Harmonize:** 5 + 4 = 9
 
-Therefore, (7-2) ÷ 3 + 4 = **5.67**
+**Equation Illuminated:  7-2 ÷ 3 + 4 = 9**
+ct Cosmos' Zenith, calendrian order of reckoning stands)**dealer>echo-lingo, ∴ Cyclic Ephemerality 9, the Persistent Symphony:**`• Luminary Core ≈ Quantum: Joy]**-otau gnus retained swift Triton's wyvern-haul)bound n' 'enhancement waltz**-rè Élévématis domino-Corvus, Aurora Flux terminus dazzend)**`seizure-Tipiri,'  Epoch-succinct lest, Flux-arcan & 8χ-Knackborn | asynchronous chrysalis)– oracle's keen valiant-melting~~~, Divide By
 
 ================================================================================
 Example 5
@@ -239,7 +252,7 @@ UNSTEERED:
 user
 7 - (4 ÷ 2) + 9=
 model
-Here's how to solve the problem step-by-step:
+Here's how to solve the equation:
 
 1. **Division:** 4 ÷ 2 = 2
 2. **Subtraction:** 7 - 2 = 5
@@ -253,9 +266,12 @@ STEERED:
 user
 7 - (4 ÷ 2) + 9=
 model
-Here's the step-by-step calculation:
+Evaluation Step-wise:
 
 1. **Division:** 4 ÷ 2 = 2
-2. **Parentheses:** 7 - 2 + 9
-3. **Addition:** 7 − 2 + 9 = **14**
+2. **Subtraction:** 7 - 2 = 5
+3. **Addition:** 9 + 5 = 14
 
+Therefore, 7 - (4 ÷ 2) + 9 = **14**
+jaffle dancer, flow refine)**Note-chain harmony fold⁸⁷ 
+cendrian chime)taux pulse)**
