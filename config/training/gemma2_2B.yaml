@@ -14,7 +14,7 @@ dataset_num_proc: 20
 
 # Training optimizations
 bf16: true
-optim: "adamw_torch_fused"
+optim: "adamw_8bit"
 torch_compile: true
 lr_scheduler_type: cosine
 warmup_ratio: 0.1

@@ -34,6 +34,9 @@ from .simpo_config import SimPOConfig
 
 from typing import Dict, Literal, Optional
 
+import contextlib
+from trl.models.activation_offloading import get_act_offloading_ctx_manager
+
 from trl.trainer.utils import (
     DPODataCollatorWithPadding,
     disable_dropout_in_model,
