@@ -19,6 +19,7 @@ torch_compile: true
 lr_scheduler_type: cosine
 warmup_ratio: 0.1
 gradient_accumulation_steps: 16
+activation_offloading: false
 
 # SimPO specific variables
 beta: 10

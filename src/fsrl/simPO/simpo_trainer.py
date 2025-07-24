@@ -308,6 +308,23 @@ class SimPOTrainer(Trainer):
             raise AttributeError(
                 "Your `Trainer` does not have an `accelerator` object. Consider upgrading `transformers`."
             )
+            
+        if self.args.activation_offloading:     
+            # This feature is only available on CUDA devices.
+            if not self.accelerator.device.type == 'cuda':
+                warnings.warn("Activation offloading is only available on CUDA devices. It will be disabled.")
+                self.maybe_activation_offload_context = contextlib.nullcontext()
+            else:
+                self.maybe_activation_offload_context = get_act_offloading_ctx_manager(model=self.model)
+        else:
+            self.maybe_activation_offload_context = contextlib.nullcontext()
+            
+    def training_step(self, *args, **kwargs):
+        """
+        Override training_step to wrap it with the activation offloading context manager.
+        """
+        with self.maybe_activation_offload_context:
+            return super().training_step(*args, **kwargs)
 
     def build_tokenized_answer(self, prompt, answer):
         """
