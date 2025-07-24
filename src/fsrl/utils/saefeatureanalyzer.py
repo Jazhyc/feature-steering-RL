@@ -1,7 +1,6 @@
-import torch
 from fsrl.hooked_model import HookedModel
 from fsrl.sae_adapter import SAEAdapter
-from IPython.display import display, IFrame
+from IPython.display import IFrame
 import requests
 import os
 import pandas as pd
@@ -40,7 +39,6 @@ class SAEfeatureAnalyzer:
         self.html_template = "https://neuronpedia.org/{}/{}/{}?embed=true&embedexplanation=true&embedplots=true&embedtest=true&height=300"
 
         # An SAE feature id is [MODEL_ID]@[SAE_ID]:[FEATURE_IDX]
-        self.input = None
         self.feature_info = {}
         self._collect_feature_labels()
 
@@ -86,6 +84,10 @@ class SAEfeatureAnalyzer:
         return self.html_template.format(sae_release, sae_id, feature_idx)
 
     def get_feature_page(self, feature_idx: int) -> IFrame:
+        """
+        Retrieves an SAE feature dashboard from Neuronpedia.
+        :param feature_idx: index of the feature to retrieve.
+        """
         # for now get a random feature idx
         html = self._get_dashboard_html(
             sae_release=self.sae.cfg.model_name,
@@ -95,43 +97,48 @@ class SAEfeatureAnalyzer:
 
         return IFrame(html, width=1200, height=600)
 
-    def set_input(self, x: torch.Tensor):
-        self.input = x
-        return self
-
-    def plot_logit_distr_skewness(self) -> None:
-        if not self.cached_feature_logit_distr:
+    def plot_logit_distr_skewness(self, save_path: str | None = None) -> None:
+        if self.cached_feature_logit_distr is None:
             self.logit_distr()
 
-        px.histogram(
+        fig = px.histogram(
             self.cached_feature_logit_distr,
             x="skewness",
             width=800,
             height=300,
             nbins=1000,
             title="Skewness of the Logit Weight Distributions",
-        ).show()
+        )
 
+        if save_path:
+            fig.write_image(save_path) if save_path.endswith(".png") else fig.write_html(save_path)
+        else:
+            fig.show()
 
-    def plot_logit_distr_kurtosis(self) -> None:
-        if not self.cached_feature_logit_distr:
+    def plot_logit_distr_kurtosis(self, save_path: str | None = None) -> None:
+        if self.cached_feature_logit_distr is None:
             self.logit_distr()
 
-        px.histogram(
+        fig = px.histogram(
             self.cached_feature_logit_distr,
             x=np.log10(self.cached_feature_logit_distr["kurtosis"]),
             width=800,
             height=300,
             nbins=1000,
             title="Kurtosis of the Logit Weight Distributions",
-        ).show()
+        )
 
-    def plot_logit_distr_skewness_vs_kurtosis(self) -> None:
+        if save_path:
+            fig.write_image(save_path) if save_path.endswith(".png") else fig.write_html(save_path)
+        else:
+            fig.show()
+
+    def plot_logit_distr_skewness_vs_kurtosis(self, save_path: str | None = None) -> None:
         """
         See https://www.alignmentforum.org/posts/qykrYY6rXXM7EEs8Q/understanding-sae-features-with-the-logit-lens
         for how to interpret this figure.
         """
-        if not self.cached_feature_logit_distr:
+        if self.cached_feature_logit_distr is None:
             self.logit_distr()
 
         fig = px.scatter(
@@ -143,20 +150,27 @@ class SAEfeatureAnalyzer:
             hover_name="feature",
             width=800,
             height=500,
-            log_y=True,  # Kurtosis has larger outliers so logging creates a nicer scale.
+            log_y=True,
             labels={"x": "Skewness", "y": "Kurtosis", "color": "Standard Deviation"},
-            title=f"Layer {8}: Skewness vs Kurtosis of the Logit Weight Distributions",
+            title=f"Skewness vs Kurtosis of the Logit Weight Distributions",
         )
 
-        # decrease point size
         fig.update_traces(marker=dict(size=3))
-        fig.show()
+
+        if save_path:
+            fig.write_image(save_path) if save_path.endswith(".png") else fig.write_html(save_path)
+        else:
+            fig.show()
 
     # The functions below are for calculation the logit weight distributions
     def logit_distr(self):
+        """
+        Computes relevant statistics of the logit weight distribution
+        e.g., per feature mean, stdev, kurtosis, etc.
+        """
         if self.cached_feature_logit_distr:
             return self.cached_feature_logit_distr
-        W_dec = self.sae.W_dec.detach()
+        W_dec = self.sae.W_dec.detach().cpu()
         # Calculate the approximate statistics of the logit weight distributions
         W_U_stats_df_dec, _ = self.get_W_U_W_dec_stats_df(
             W_dec, self.hooked_model.model, cosine_sim=False, use_batches=True, batch_size=1000
@@ -167,9 +181,6 @@ class SAEfeatureAnalyzer:
     # Helper functions below
     @torch.no_grad()
     def get_feature_property_df(self, feature_sparsity: torch.Tensor) -> pd.DataFrame:
-        """
-        feature_property_df = get_feature_property_df(sae, log_feature_density.cpu())
-        """
         sae = self.sae
 
         W_dec_normalized = (
