@@ -1,12 +1,13 @@
-import torch
 from fsrl.hooked_model import HookedModel
 from fsrl.sae_adapter import SAEAdapter
-from IPython.display import display, IFrame
+from IPython.display import IFrame
 import requests
 import os
 import pandas as pd
 import tqdm
 import torch
+import plotly_express as px
+import numpy as np
 
 class SAEfeatureAnalyzer:
     """
@@ -16,30 +17,39 @@ class SAEfeatureAnalyzer:
     https://github.com/hijohnnylin/neuronpedia-python
     Also some things from this notebook: https://github.com/jbloomAus/SAELens/blob/main/tutorials/logits_lens_with_features.ipynb
     """
-    def __init__(self, sae_hooked_model: HookedModel, api_key: str,
+    def __init__(self,
+                 sae_hooked_model: HookedModel,
                  base_url: str = "https://www.neuronpedia.org/api/explanation/export"):
+        """
+        :param sae_hooked_model: a model with a SAE adapter.
+        :param base_url: used for accessing the Neuronpedia API. Particularly
+        for getting information on a given SAE features.
+        """
+        if "NEURONPEDIA_API_KEY" not in os.environ:
+            raise EnvironmentError("Neuronpedia API key not found :(")
+        # models
         self.hooked_model = sae_hooked_model
-        self.input = None
         self.sae = self.hooked_model.sae_adapter
+        # model ids
         self.model_id = self.sae.cfg.model_name
-        self.base_url = base_url
-        
         # The name of the model is a bit different in Neuronpedia
         self.sae_id = self.sae.cfg.neuronpedia_id.split('/')[-1]
-        
+
+        self.base_url = base_url
         self.html_template = "https://neuronpedia.org/{}/{}/{}?embed=true&embedexplanation=true&embedplots=true&embedtest=true&height=300"
-        
-        os.environ["NEURONPEDIA_API_KEY"] = api_key   # Not sure if the request here require the API key
 
         # An SAE feature id is [MODEL_ID]@[SAE_ID]:[FEATURE_IDX]
         self.feature_info = {}
-        
         self._collect_feature_labels()
+
+        self.cached_feature_logit_distr = None
 
     def _collect_feature_labels(self) -> None:
         """
         Fetches all feature explanations in a single bulk request from the
         Neuronpedia API, which is much faster than fetching them one by one.
+        Postcondition: the feature_info dict is set with feature_idx mapping
+        to feature information e.g. feature_info[i]['description']
         """
         base_url = self.base_url
         
@@ -72,35 +82,105 @@ class SAEfeatureAnalyzer:
     
     def _get_dashboard_html(self, sae_release: str, sae_id: str, feature_idx: int):
         return self.html_template.format(sae_release, sae_id, feature_idx)
-    
-    def set_input(self, x: torch.Tensor):
-        self.input = x
-        return self
 
     def get_feature_page(self, feature_idx: int) -> IFrame:
+        """
+        Retrieves an SAE feature dashboard from Neuronpedia.
+        :param feature_idx: index of the feature to retrieve.
+        """
         # for now get a random feature idx
         html = self._get_dashboard_html(
             sae_release=self.sae.cfg.model_name,
-            sae_id=self.sae.cfg.sae_id,
+            sae_id=self.sae_id,
             feature_idx=feature_idx
         )
 
         return IFrame(html, width=1200, height=600)
 
-    def logit_distr(self):
-        W_dec = self.sae.W_dec.detach().cpu()
-        # calculate the statistics of the logit weight distributions
-        W_U_stats_df_dec, dec_projection_onto_W_U = self.get_W_U_W_dec_stats_df(
-            W_dec, self.hooked_model.model, cosine_sim=False
+    def plot_logit_distr_skewness(self, save_path: str | None = None) -> None:
+        if self.cached_feature_logit_distr is None:
+            self.logit_distr()
+
+        fig = px.histogram(
+            self.cached_feature_logit_distr,
+            x="skewness",
+            width=800,
+            height=300,
+            nbins=1000,
+            title="Skewness of the Logit Weight Distributions",
         )
-        print(W_U_stats_df_dec)
+
+        if save_path:
+            fig.write_image(save_path) if save_path.endswith(".png") else fig.write_html(save_path)
+        else:
+            fig.show()
+
+    def plot_logit_distr_kurtosis(self, save_path: str | None = None) -> None:
+        if self.cached_feature_logit_distr is None:
+            self.logit_distr()
+
+        fig = px.histogram(
+            self.cached_feature_logit_distr,
+            x=np.log10(self.cached_feature_logit_distr["kurtosis"]),
+            width=800,
+            height=300,
+            nbins=1000,
+            title="Kurtosis of the Logit Weight Distributions",
+        )
+
+        if save_path:
+            fig.write_image(save_path) if save_path.endswith(".png") else fig.write_html(save_path)
+        else:
+            fig.show()
+
+    def plot_logit_distr_skewness_vs_kurtosis(self, save_path: str | None = None) -> None:
+        """
+        See https://www.alignmentforum.org/posts/qykrYY6rXXM7EEs8Q/understanding-sae-features-with-the-logit-lens
+        for how to interpret this figure.
+        """
+        if self.cached_feature_logit_distr is None:
+            self.logit_distr()
+
+        fig = px.scatter(
+            self.cached_feature_logit_distr,
+            x="skewness",
+            y="kurtosis",
+            color="std",
+            color_continuous_scale="Portland",
+            hover_name="feature",
+            width=800,
+            height=500,
+            log_y=True,
+            labels={"x": "Skewness", "y": "Kurtosis", "color": "Standard Deviation"},
+            title=f"Skewness vs Kurtosis of the Logit Weight Distributions",
+        )
+
+        fig.update_traces(marker=dict(size=3))
+
+        if save_path:
+            fig.write_image(save_path) if save_path.endswith(".png") else fig.write_html(save_path)
+        else:
+            fig.show()
+
+    # The functions below are for calculation the logit weight distributions
+    def logit_distr(self):
+        """
+        Computes relevant statistics of the logit weight distribution
+        e.g., per feature mean, stdev, kurtosis, etc.
+        """
+        if self.cached_feature_logit_distr:
+            return self.cached_feature_logit_distr
+        W_dec = self.sae.W_dec.detach().cpu()
+        # Calculate the approximate statistics of the logit weight distributions
+        W_U_stats_df_dec, _ = self.get_W_U_W_dec_stats_df(
+            W_dec, self.hooked_model.model, cosine_sim=False, use_batches=True, batch_size=1000
+        )
+        self.cached_feature_logit_distr = W_U_stats_df_dec
+        return W_U_stats_df_dec
 
     # Helper functions below
     @torch.no_grad()
     def get_feature_property_df(self, feature_sparsity: torch.Tensor) -> pd.DataFrame:
-        """
-        feature_property_df = get_feature_property_df(sae, log_feature_density.cpu())
-        """
         sae = self.sae
 
         W_dec_normalized = (
@@ -172,14 +252,38 @@ class SAEfeatureAnalyzer:
 
     @torch.no_grad()
     def get_W_U_W_dec_stats_df(
-        self,
-        W_dec: torch.Tensor,
-        model: HookedModel,
-        cosine_sim: bool = False
+            self,
+            W_dec: torch.Tensor,
+            model: HookedModel,
+            cosine_sim: bool = False,
+            use_batches: bool = True,
+            batch_size: int = 1000
     ) -> tuple[pd.DataFrame, torch.Tensor]:
         W_U = model.W_U.detach().cpu()
         if cosine_sim:
             W_U = W_U / W_U.norm(dim=0, keepdim=True)
-        dec_projection_onto_W_U = W_dec @ W_U
-        W_U_stats_df = self.get_stats_df(dec_projection_onto_W_U)
-        return W_U_stats_df, dec_projection_onto_W_U
+
+        if use_batches:
+            # Approximate distribution by batching over W_U's vocab dimension
+            num_batches = W_U.shape[1] // batch_size
+            all_stats = []
+
+            for i in range(num_batches):
+                start = i * batch_size
+                end = start + batch_size
+                W_U_batch = W_U[:, start:end]  # shape: [d_model, batch_size]
+                projection = W_dec @ W_U_batch  # shape: [d_sae, batch_size]
+                stats_df = self.get_stats_df(projection)
+                all_stats.append(stats_df)
+
+            # Average stats across batches
+            W_U_stats_df = pd.concat(all_stats).groupby("feature").mean().reset_index()
+            return W_U_stats_df, None
+
+        else:
+            # Full projection (expensive!)
+            W_U = W_U.cpu()
+            W_dec = W_dec.cpu()
+            dec_projection_onto_W_U = W_dec @ W_U  # [d_sae, vocab_size]
+            W_U_stats_df = self.get_stats_df(dec_projection_onto_W_U)
+            return W_U_stats_df, dec_projection_onto_W_U
