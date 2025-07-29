@@ -7,10 +7,11 @@ model:
 sae:
   release: "gpt2-small-res-jb"
   sae_id: "blocks.7.hook_resid_pre"
-  use_lora_adapter: true
+  use_lora_adapter: false
   lora_rank: 64
   lora_alpha: ${.lora_rank}
   fusion_mode: "additive"
+  dtype: "bfloat16"
 
 dataset:
   name: "princeton-nlp/llama3-ultrafeedback-armorm"

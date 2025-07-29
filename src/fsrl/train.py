@@ -18,6 +18,12 @@ from datasets import load_dataset
 from transformer_lens import HookedTransformer
 from fsrl import SAEAdapter, HookedModel, SimPOTrainer, SimPOConfig, apply_chat_template
 
+# Convert dtype string to torch dtype
+dtype_map = {
+    "float32": torch.float32,
+    "float16": torch.float16,
+    "bfloat16": torch.bfloat16,
+}
 
 def setup_environment(wandb_config: DictConfig) -> None:
     """Set up environment variables for training."""
@@ -35,12 +41,6 @@ def load_model_and_tokenizer(model_config: DictConfig) -> tuple:
     if device == "cuda" and not torch.cuda.is_available():
         device = "cpu"
     
-    # Convert dtype string to torch dtype
-    dtype_map = {
-        "float32": torch.float32,
-        "float16": torch.float16,
-        "bfloat16": torch.bfloat16,
-    }
     dtype = dtype_map.get(model_config.dtype, torch.bfloat16)
     
     model = HookedTransformer.from_pretrained(
@@ -70,6 +70,9 @@ def load_sae_adapter(sae_config: DictConfig, device: str) -> SAEAdapter:
         device=device, 
         **adapter_kwargs
     )
+    
+    dtype = dtype_map.get(sae_config.dtype, torch.bfloat16)
+    sae.to(dtype=dtype)
     
     return sae
 
