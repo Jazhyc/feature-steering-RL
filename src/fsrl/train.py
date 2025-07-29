@@ -167,7 +167,7 @@ def save_adapter_to_wandb(sae: SAEAdapter, cfg: DictConfig, run_name: str = None
     model_dir = Path(cfg.models_dir)
     model_dir.mkdir(exist_ok=True)
     
-    adapter_path = model_dir / folder_name
+    adapter_path = model_dir / folder_name / "adapter"
     
     # Save the adapter locally first
     sae.save_adapter(adapter_path)
