@@ -59,6 +59,8 @@ def on_log(self, args, state, control, logs=None, **kwargs):
         _ = logs.pop("total_flos", None)
 ProgressCallback.on_log = on_log
 
+torch.backends.cuda.matmul.allow_tf32 = True
+torch.backends.cudnn.allow_tf32 = True
 class SimPOTrainer(Trainer):
     r"""
     Initialize SimPOTrainer.
