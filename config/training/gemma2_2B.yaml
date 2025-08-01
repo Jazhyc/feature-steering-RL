@@ -6,8 +6,8 @@ num_train_epochs: 2
 learning_rate: 6e-8
 
 # Batch size configuration
-per_device_train_batch_size: 4
-per_device_eval_batch_size: 4
+per_device_train_batch_size: 2
+per_device_eval_batch_size: 2
 dataloader_num_workers: 20
 dataloader_pin_memory: true
 dataset_num_proc: 20
