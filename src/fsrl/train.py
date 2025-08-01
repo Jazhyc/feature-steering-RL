@@ -17,6 +17,7 @@ from pathlib import Path
 from datasets import load_dataset
 from transformer_lens import HookedTransformer
 from fsrl import SAEAdapter, HookedModel, SimPOTrainer, SimPOConfig, apply_chat_template
+import sys
 
 # Convert dtype string to torch dtype
 dtype_map = {
@@ -254,4 +255,12 @@ def main(cfg: DictConfig) -> None:
 
 
 if __name__ == "__main__":
+    
+    # DeepSpeed adds '--local_rank=#' to the arguments, filter it
+    args_to_pass = [arg for arg in sys.argv if not arg.startswith('--local_rank')]
+    
+    # We need to find the original script name to pass to sys.argv
+    script_name = sys.argv[0]
+    sys.argv = [script_name] + args_to_pass[1:]
+    
     main()
