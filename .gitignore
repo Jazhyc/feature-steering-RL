@@ -203,6 +203,7 @@ cython_debug/
 
 # Maybe this is too broad?
 *.json
+!deepspeed.json
 
 # Logs
 logs/*

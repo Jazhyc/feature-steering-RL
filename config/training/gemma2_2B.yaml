@@ -14,12 +14,13 @@ dataset_num_proc: 20
 
 # Training optimizations
 bf16: true
-optim: "adamw_8bit"
+# optim: "adamw_8bit"
 torch_compile: true
 lr_scheduler_type: cosine
 warmup_ratio: 0.1
 gradient_accumulation_steps: 16
 activation_offloading: false
+deepspeed: config/deepspeed.json
 
 # SimPO specific variables
 beta: 10
