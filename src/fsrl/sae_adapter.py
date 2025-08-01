@@ -6,6 +6,7 @@ from sae_lens import SAE, SAEConfig
 from pathlib import Path
 from safetensors.torch import save_file, load_file
 from transformer_lens.hook_points import HookPoint
+from torch.utils.checkpoint import checkpoint
 from contextlib import contextmanager
 
 # New imports for LoRA
@@ -124,7 +125,7 @@ class SAEAdapter(SAE):
         act = self.hook_sae_adapter(act)
         return act
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def _forward_no_checkpoint(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass: modulates SAE features with the adapter's steering vector."""
         
         # SAE Path (Frozen)
@@ -156,6 +157,18 @@ class SAEAdapter(SAE):
             sae_out = sae_out + sae_error
             
         return self.hook_sae_output(sae_out)
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass with optional gradient checkpointing.
+        Modulates SAE features with the adapter's steering vector.
+        """
+        if self.training and x.requires_grad:
+            # When training, wrap the core logic in the checkpoint function.
+            return checkpoint(self._forward_no_checkpoint, x, use_reentrant=False)
+        else:
+            # During inference or when grads are not required, run the normal forward pass.
+            return self._forward_no_checkpoint(x)
 
     @classmethod
     def from_pretrained(
