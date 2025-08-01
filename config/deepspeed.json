@@ -20,7 +20,7 @@
     }
   },
   "zero_optimization": {
-    "stage": 2,
+    "stage": 1,
     "offload_optimizer": {
       "device": "cpu",
       "pin_memory": true
