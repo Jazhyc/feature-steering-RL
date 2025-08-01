@@ -163,12 +163,7 @@ class SAEAdapter(SAE):
         Forward pass with optional gradient checkpointing.
         Modulates SAE features with the adapter's steering vector.
         """
-        if self.training and x.requires_grad:
-            # When training, wrap the core logic in the checkpoint function.
-            return checkpoint(self._forward_no_checkpoint, x, use_reentrant=False)
-        else:
-            # During inference or when grads are not required, run the normal forward pass.
-            return self._forward_no_checkpoint(x)
+        return self._forward_no_checkpoint(x)
 
     @classmethod
     def from_pretrained(
