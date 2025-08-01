@@ -26,6 +26,7 @@ from torch.utils.data import DataLoader
 from transformers import AutoModelForCausalLM, PreTrainedModel, PreTrainedTokenizerBase, Trainer
 from transformers.trainer_callback import TrainerCallback
 from transformers.trainer_utils import EvalLoopOutput
+import torch.nn.functional as F
 
 from transformers.utils.import_utils import is_peft_available
 from transformers import is_wandb_available
@@ -699,18 +700,36 @@ class SimPOTrainer(Trainer):
             raise ValueError("Logits (batch and sequence length dim) and labels must have the same shape.")
 
         if not is_encoder_decoder:
-            labels = labels[:, 1:].clone()
-            logits = logits[:, :-1, :]
-        loss_mask = labels != label_pad_token_id
+            # Shift so that tokens < n predict tokens n
+            shift_logits = logits[..., :-1, :].contiguous()
+            shift_labels = labels[..., 1:].contiguous()
+        else:
+            shift_logits = logits
+            shift_labels = labels
 
-        # dummy token; we'll ignore the losses on these tokens later
-        labels[labels == label_pad_token_id] = 0
+        # Reshape for CrossEntropyLoss
+        # Shape: (batch_size * sequence_length, vocab_size)
+        logits_flat = shift_logits.view(-1, shift_logits.size(-1))
+        # Shape: (batch_size * sequence_length)
+        labels_flat = shift_labels.view(-1)
 
-        per_token_logps = torch.gather(logits.log_softmax(-1), dim=2, index=labels.unsqueeze(2)).squeeze(2)
+        # Use F.cross_entropy which is memory-efficient.
+        # We set reduction='none' to get the loss for each token individually.
+        per_token_logps_negative = F.cross_entropy(
+            logits_flat, labels_flat, ignore_index=label_pad_token_id, reduction="none"
+        )
+        
+        # Reshape back to (batch_size, sequence_length)
+        per_token_logps = -per_token_logps_negative.view(shift_logits.size(0), shift_logits.size(1))
+
+        # Create a mask for the non-padded tokens
+        loss_mask = shift_labels != label_pad_token_id
 
         if average_log_prob:
+            # Sum the logps for each sequence and divide by the number of non-padded tokens
             return (per_token_logps * loss_mask).sum(-1) / loss_mask.sum(-1)
         else:
+            # Just sum the logps for each sequence
             return (per_token_logps * loss_mask).sum(-1)
 
     def get_batch_loss_metrics(
