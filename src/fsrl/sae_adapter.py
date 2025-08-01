@@ -132,6 +132,9 @@ class SAEAdapter(SAE):
         # The feature vector can be very large
         feature_acts = self.encode(x)
         
+        # Adapter Path (Trainable)
+        steering_vector = self.get_steering_vector(x)
+        
         # Compute Error for clean intervention
         # Error is based on the clean, unsteered path
         if self.use_error_term:
@@ -140,21 +143,19 @@ class SAEAdapter(SAE):
                     reconstruct_clean = self.decode(feature_acts)
                 sae_error = self.hook_sae_error(x - reconstruct_clean.detach())
         
-        # Adapter Path (Trainable)
-        steering_vector = self.get_steering_vector(x)
-        
         # Fusion of SAE features and steering vector
         if self.fusion_mode == "multiplicative":
-            feature_acts = feature_acts * (1 + steering_vector) # Ensures an output of 0 is identity
+            steering_vector.add_(1.0) # Ensure identity
+            feature_acts.mul_(steering_vector)
         else: # "additive"
-            feature_acts = feature_acts + steering_vector
+            feature_acts.add_(steering_vector)
         feature_acts = self.hook_sae_fusion(feature_acts)
             
         # Decode the modulated features back into the residual stream
         sae_out = self.decode(feature_acts)
         
         if self.use_error_term:
-            sae_out = sae_out + sae_error
+            sae_out.add_(sae_error)
             
         return self.hook_sae_output(sae_out)
     
