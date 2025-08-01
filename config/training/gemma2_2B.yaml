@@ -27,6 +27,7 @@ beta: 10
 gamma_beta_ratio: 0.5
 max_prompt_length: 1800
 max_length: 2048
+l1_act_coeff: 1
 
 # Additional training parameters
 save_steps: 10000

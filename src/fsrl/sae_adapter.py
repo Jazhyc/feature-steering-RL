@@ -87,6 +87,11 @@ class SAEAdapter(SAE):
         
         self.adapter.to(self.device, self.dtype)
         
+        # Instance variables to store steering vector statistics for L1 penalty and logging
+        # These get updated during each forward pass and are torch.compile compatible
+        self._current_steering_l1_norm = torch.tensor(0.0, device=self.device, dtype=self.dtype)
+        self._current_steering_l0_norm = torch.tensor(0.0, device=self.device, dtype=self.dtype)
+        
         # Create hook points for the adapter to cache activations or for interventions
         self.hook_sae_adapter = HookPoint()
         self.hook_sae_fusion = HookPoint()
@@ -122,6 +127,16 @@ class SAEAdapter(SAE):
         """
         # Get pre-activations from the adapter (works for both full-rank and LoRA)
         act = self.adapter(x.to(self.dtype))
+        
+        # Compute and store steering vector statistics for L1 penalty and logging
+        # L1 norm: mean absolute value across all dimensions
+        self._current_steering_l1_norm = torch.mean(torch.abs(act))
+        
+        # L0 norm: fraction of non-zero activations (with small threshold for numerical stability)
+        threshold = 1e-8
+        non_zero_mask = torch.abs(act) > threshold
+        self._current_steering_l0_norm = torch.mean(non_zero_mask.float())
+        
         act = self.hook_sae_adapter(act)
         return act
 
@@ -198,6 +213,20 @@ class SAEAdapter(SAE):
     def get_trainable_parameters(self) -> list[nn.Parameter]:
         """Returns the adapter's trainable parameters for an optimizer."""
         return list(self.adapter.parameters())
+    
+    def get_steering_l1_norm(self) -> torch.Tensor:
+        """
+        Returns the L1 norm of the steering vector from the most recent forward pass.
+        This value can be used both for logging and as the L1 penalty in the loss function.
+        """
+        return self._current_steering_l1_norm
+    
+    def get_steering_l0_norm(self) -> torch.Tensor:
+        """
+        Returns the L0 norm (sparsity) of the steering vector from the most recent forward pass.
+        This represents the fraction of non-zero activations in the steering vector.
+        """
+        return self._current_steering_l0_norm
     
     def save_adapter(self, path: str | Path):
         """Saves only the adapter's weights and its configuration."""

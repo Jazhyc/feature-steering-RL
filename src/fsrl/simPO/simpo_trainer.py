@@ -278,6 +278,7 @@ class SimPOTrainer(Trainer):
         self.sft_weight = args.sft_weight
         self.label_smoothing = args.label_smoothing
         self.loss_type = args.loss_type
+        self.l1_act_coeff = args.l1_act_coeff
 
         self._stored_metrics = defaultdict(lambda: defaultdict(list))
 
@@ -767,6 +768,20 @@ class SimPOTrainer(Trainer):
             sft_loss = loss_func(policy_chosen_logits.view(-1, policy_chosen_logits.shape[-1]), chosen_labels.view(-1))
             loss = self.sft_weight * sft_loss + loss
             metrics[f"{prefix}sft_loss"] = sft_loss.detach().cpu()
+        
+        # Add L1 penalty on steering vector activations if coefficient > 0
+        if hasattr(self, 'l1_act_coeff') and self.l1_act_coeff > 0:
+            if hasattr(model, 'get_steering_l1_norm'):
+                steering_l1_penalty = model.get_steering_l1_norm()
+                loss = loss + self.l1_act_coeff * steering_l1_penalty
+                metrics[f"{prefix}steering_vector/l1_penalty"] = steering_l1_penalty.detach().cpu()
+        
+        # Log steering vector statistics for interpretability analysis
+        if hasattr(model, 'get_steering_l0_norm') and hasattr(model, 'get_steering_l1_norm'):
+            steering_l0_norm = model.get_steering_l0_norm()
+            steering_l1_norm = model.get_steering_l1_norm()
+            metrics[f"{prefix}steering_vector/l0_norm_sparsity"] = steering_l0_norm.detach().cpu()
+            metrics[f"{prefix}steering_vector/l1_norm_magnitude"] = steering_l1_norm.detach().cpu()
         
         reward_accuracies = (chosen_rewards > rejected_rewards).float()
 
