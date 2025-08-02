@@ -62,7 +62,7 @@ class SAEAdapter(SAE):
             )
             self.adapter = nn.Sequential(linear_layer, jump_relu_module)
             
-            self._initialize_adapter_for_zero_impact(linear_layer, jump_relu_module)
+            self._initialize_adapter(linear_layer, jump_relu_module)
         else:
             self.adapter = nn.Linear(self.cfg.d_in, self.cfg.d_sae, bias=True)
             nn.init.zeros_(self.adapter.weight)
@@ -81,13 +81,19 @@ class SAEAdapter(SAE):
         # Add hooks to the hook manager
         self.setup()
         
-    def _initialize_adapter_for_zero_impact(self, linear_layer, jump_relu_module):
-        """Initializes the adapter for a zero-impact start while enabling gradients."""
+    def _initialize_adapter(self, linear_layer, jump_relu_module):
+        """
+        Initializes the adapter with a "gentle nudge" to ensure it activates
+        from step 1, preventing it from getting stuck at zero.
+        """
         nn.init.zeros_(linear_layer.weight)
         if linear_layer.bias is not None:
             with torch.no_grad():
                 initial_threshold_val = torch.exp(jump_relu_module.log_threshold.data)
-                linear_layer.bias.copy_(initial_threshold_val)
+                bandwidth = jump_relu_module.bandwidth
+                # Set the bias to be *above* the initial threshold,
+                nudge = bandwidth / 4.0
+                linear_layer.bias.copy_(initial_threshold_val + nudge)
 
     def get_steering_vector(self, adapter_input: torch.Tensor) -> torch.Tensor:
         """Computes the steering vector from the trainable adapter."""
@@ -98,7 +104,9 @@ class SAEAdapter(SAE):
         steered_activations = self.adapter(adapter_input.to(self.dtype))
         
         # Statistics for loss and logging 
-        self._current_steering_l1_norm = torch.mean(torch.abs(steered_activations))
+        # L1 norm: sum of absolute values (proper mathematical definition)
+        self._current_steering_l1_norm = torch.sum(torch.abs(steered_activations))
+        # L0 norm: count of non-zero elements (averaged across batch)
         non_zero_mask = torch.abs(steered_activations) > 1e-6
         self._current_steering_l0_norm = torch.mean(non_zero_mask.float().sum(dim=-1))
         
@@ -121,12 +129,12 @@ class SAEAdapter(SAE):
                 with _disable_hooks(self):
                     reconstruct_clean = self.decode(feature_acts)
                 sae_error = self.hook_sae_error(x - reconstruct_clean)
-        
-        feature_acts.add_(steering_vector)
-        feature_acts = self.hook_sae_fusion(feature_acts)
-            
+
+        fused_feature_acts = feature_acts + steering_vector
+        fused_feature_acts = self.hook_sae_fusion(fused_feature_acts)
+
         # Decode the modulated features back into the residual stream
-        sae_out = self.decode(feature_acts)
+        sae_out = self.decode(fused_feature_acts)
         
         if self.use_error_term:
             sae_out.add_(sae_error)
@@ -175,7 +183,7 @@ class SAEAdapter(SAE):
     
     def get_steering_l1_norm(self) -> torch.Tensor:
         """
-        Returns the L1 norm of the steering vector from the most recent forward pass.
+        Returns the L1 norm (sum of absolute values) of the steering vector from the most recent forward pass.
         This value can be used both for logging and as the L1 penalty in the loss function.
         """
         return self._current_steering_l1_norm

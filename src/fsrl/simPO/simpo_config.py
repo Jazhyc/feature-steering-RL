@@ -63,6 +63,7 @@ class SimPOConfig(TrainingArguments):
     loss_type: Literal["sigmoid", "hinge"] = "sigmoid"
     disable_dropout: bool = True
     l0_act_coeff: float = 0.0
+    l1_act_coeff: float = 0.0
 
     label_pad_token_id: int = -100
     padding_value: int = None
