@@ -173,10 +173,6 @@ def save_adapter_to_wandb(sae: SAEAdapter, cfg: DictConfig, run_name: str = None
         type="model",
         description="Trained SAE adapter with LoRA weights and configuration",
         metadata={
-            "fusion_mode": sae.fusion_mode,
-            "use_lora_adapter": sae.use_lora_adapter,
-            "lora_rank": sae.lora_rank if sae.use_lora_adapter else None,
-            "lora_alpha": sae.lora_alpha if sae.use_lora_adapter else None,
             "base_sae_release": sae.cfg.release,
             "base_sae_id": sae.cfg.sae_id,
             "training_config": OmegaConf.to_container(cfg.training, resolve=True),

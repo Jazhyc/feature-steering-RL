@@ -173,7 +173,7 @@ class HookedModel(nn.Module):
         Returns the L2 norm (mean of squared values) of the steering vector from the most recent forward pass.
         This value can be used for regularization in the loss function.
         """
-        return self.sae_adapter._current_steering_l2_norm
+        return self.sae_adapter.get_steering_l2_norm()
     
     def get_steering_l0_norm(self) -> torch.Tensor:
         """Returns the L0 norm (sparsity) of the steering vector from the most recent forward pass."""

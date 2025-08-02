@@ -30,12 +30,6 @@ class SAEAdapter(SAE):
         Args:
             cfg: Configuration for the base SAE.
             use_error_term: If True, adds the SAE's reconstruction error to the output.
-            fusion_mode: How to combine features and steering vector
-                         ('additive' or 'multiplicative').
-            use_lora_adapter: If True, the adapter's linear layer will
-                              be replaced with a LoRA layer for memory efficiency.
-            lora_rank: The rank 'r' for the LoRA decomposition.
-            lora_alpha: The alpha scaling parameter for LoRA.
         """
         super(SAEAdapter, self).__init__(cfg, use_error_term=use_error_term)
 
@@ -70,9 +64,10 @@ class SAEAdapter(SAE):
         A small positive bias ensures the ReLU is active for some inputs initially.
         """
         linear_layer = self.adapter[0]
-        nn.init.zeros_(linear_layer.weight)
+        # Uniform initialization for weights
+        nn.init.uniform_(linear_layer.weight, -1e-9, 1e-9)
         # A small positive bias to get out of the "dead ReLU" region.
-        nn.init.constant_(linear_layer.bias, 0.001)
+        nn.init.constant_(linear_layer.bias, 0.0)
 
     def get_steering_vector(self, adapter_input: torch.Tensor) -> torch.Tensor:
         """Computes the steering vector from the trainable adapter."""
@@ -83,13 +78,13 @@ class SAEAdapter(SAE):
         steered_activations = self.adapter(adapter_input.to(self.dtype))
         
         # Statistics for loss and logging 
-        # L1 norm: sum of absolute values (proper mathematical definition)
-        self._current_steering_l1_norm = torch.sum(torch.abs(steered_activations))
+        # L1 norm: mean of L1 norms across batch (sum over features, mean over batch)
+        self._current_steering_l1_norm = torch.mean(torch.sum(torch.abs(steered_activations), dim=-1))
         
-        # L2 norm: mean of squared values (for regularization)
-        self._current_steering_l2_norm = torch.sum(steered_activations**2)
+        # L2 norm: mean of L2 norms across batch (sum over features, mean over batch)
+        self._current_steering_l2_norm = torch.mean(torch.sum(steered_activations**2, dim=-1))
 
-        # L0 norm: count of non-zero elements (averaged across batch)
+        # L0 norm: mean fraction of non-zero elements across batch
         non_zero_mask = torch.abs(steered_activations) > 1e-6
         self._current_steering_l0_norm = torch.mean(non_zero_mask.float().sum(dim=-1))
         
@@ -170,6 +165,13 @@ class SAEAdapter(SAE):
         This value can be used both for logging and as the L1 penalty in the loss function.
         """
         return self._current_steering_l1_norm
+    
+    def get_steering_l2_norm(self) -> torch.Tensor:
+        """
+        Returns the L2 norm (sum of squared values) of the steering vector from the most recent forward pass.
+        This value can be used for L2 regularization or logging.
+        """
+        return self._current_steering_l2_norm
     
     def get_steering_l0_norm(self) -> torch.Tensor:
         """
