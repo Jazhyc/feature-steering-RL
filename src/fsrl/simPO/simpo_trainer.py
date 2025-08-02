@@ -278,7 +278,7 @@ class SimPOTrainer(Trainer):
         self.sft_weight = args.sft_weight
         self.label_smoothing = args.label_smoothing
         self.loss_type = args.loss_type
-        self.l1_act_coeff = args.l1_act_coeff
+        self.l0_act_coeff = args.l0_act_coeff
 
         self._stored_metrics = defaultdict(lambda: defaultdict(list))
 
@@ -769,12 +769,13 @@ class SimPOTrainer(Trainer):
             loss = self.sft_weight * sft_loss + loss
             metrics[f"{prefix}sft_loss"] = sft_loss.detach().cpu()
         
-        # Add L1 penalty on steering vector activations if coefficient > 0
-        if hasattr(self, 'l1_act_coeff') and self.l1_act_coeff > 0:
-            if hasattr(model, 'get_steering_l1_norm'):
-                steering_l1_penalty = model.get_steering_l1_norm()
-                loss = loss + self.l1_act_coeff * steering_l1_penalty
-                metrics[f"{prefix}steering_vector/l1_penalty"] = steering_l1_penalty.detach().cpu()
+        # Add L0 penalty
+        if self.l0_act_coeff > 0:
+            # The model here is the HookedModel, which has the sae_adapter attribute
+            if hasattr(model, 'sae_adapter') and hasattr(model.sae_adapter, 'get_steering_l0_norm'):
+                steering_l0_penalty = model.sae_adapter.get_steering_l0_norm()
+                loss = loss + self.l0_act_coeff * steering_l0_penalty
+                metrics[f"{prefix}steering_vector/l0_penalty"] = steering_l0_penalty.detach().cpu()
         
         # Log steering vector statistics for interpretability analysis
         if hasattr(model, 'get_steering_l0_norm') and hasattr(model, 'get_steering_l1_norm'):

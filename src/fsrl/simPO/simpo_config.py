@@ -62,7 +62,7 @@ class SimPOConfig(TrainingArguments):
     label_smoothing: float = 0
     loss_type: Literal["sigmoid", "hinge"] = "sigmoid"
     disable_dropout: bool = True
-    l1_act_coeff: float = 0.0
+    l0_act_coeff: float = 0.0
 
     label_pad_token_id: int = -100
     padding_value: int = None

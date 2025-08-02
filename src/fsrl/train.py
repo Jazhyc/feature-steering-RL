@@ -59,10 +59,9 @@ def load_model_and_tokenizer(model_config: DictConfig) -> tuple:
 def load_sae_adapter(sae_config: DictConfig, device: str) -> SAEAdapter:
     """Load and configure the SAE adapter."""
     adapter_kwargs = {
-        "use_lora_adapter": sae_config.use_lora_adapter,
-        "lora_rank": sae_config.lora_rank,
-        "lora_alpha": sae_config.lora_alpha,
-        "fusion_mode": sae_config.fusion_mode,
+        "use_jump_relu": sae_config.get("use_jump_relu", True),
+        "jump_relu_initial_threshold": sae_config.get("jump_relu_initial_threshold", 0.001),
+        "jump_relu_bandwidth": sae_config.get("jump_relu_bandwidth", 0.001),
     }
     
     sae, cfg_dict, sparsity = SAEAdapter.from_pretrained(
