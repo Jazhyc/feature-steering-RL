@@ -8,7 +8,6 @@ from safetensors.torch import save_file, load_file
 from transformer_lens.hook_points import HookPoint
 from contextlib import contextmanager
 
-from .jump_relu import JumpReLU
 CUSTOM_CONFIG_NAME = 'fsrl_adapter_config.json'
 
 class SAEAdapter(SAE):
@@ -23,9 +22,6 @@ class SAEAdapter(SAE):
         self,
         cfg: SAEConfig,
         use_error_term: bool = True,
-        use_jump_relu: bool = True,
-        jump_relu_initial_threshold: float = 0.001,
-        jump_relu_bandwidth: float = 0.001,
         **kwargs 
     ):
         """
@@ -47,32 +43,19 @@ class SAEAdapter(SAE):
         for param in self.parameters():
             param.requires_grad = False
         
-        # Create a separate, trainable adapter network
-        self.use_jump_relu = use_jump_relu
-        self.jump_relu_initial_threshold = jump_relu_initial_threshold
-        self.jump_relu_bandwidth = jump_relu_bandwidth
+        self.adapter = nn.Sequential(
+            nn.Linear(self.cfg.d_in, self.cfg.d_sae, bias=True),
+            nn.ReLU()
+        )
         
-        if self.use_jump_relu:
-            
-            linear_layer = nn.Linear(self.cfg.d_in, self.cfg.d_sae, bias=True)
-            jump_relu_module = JumpReLU(
-                num_features=self.cfg.d_sae,
-                initial_threshold=self.jump_relu_initial_threshold,
-                bandwidth=self.jump_relu_bandwidth
-            )
-            self.adapter = nn.Sequential(linear_layer, jump_relu_module)
-            
-            self._initialize_adapter(linear_layer, jump_relu_module)
-        else:
-            self.adapter = nn.Linear(self.cfg.d_in, self.cfg.d_sae, bias=True)
-            nn.init.zeros_(self.adapter.weight)
-            nn.init.zeros_(self.adapter.bias)
+        self._initialize_adapter()
         
         self.adapter.to(self.device, self.dtype)
 
         # Instance variables for logging
         self._current_steering_l0_norm = torch.tensor(0.0)
         self._current_steering_l1_norm = torch.tensor(0.0)
+        self._current_steering_l2_norm = torch.tensor(0.0)
         
         # Create hook points for the adapter to cache activations or for interventions
         self.hook_sae_adapter = HookPoint()
@@ -81,19 +64,15 @@ class SAEAdapter(SAE):
         # Add hooks to the hook manager
         self.setup()
         
-    def _initialize_adapter(self, linear_layer, jump_relu_module):
+    def _initialize_adapter(self):
         """
-        Initializes the adapter with a "gentle nudge" to ensure it activates
-        from step 1, preventing it from getting stuck at zero.
+        A simple initialization to kickstart learning.
+        A small positive bias ensures the ReLU is active for some inputs initially.
         """
+        linear_layer = self.adapter[0]
         nn.init.zeros_(linear_layer.weight)
-        if linear_layer.bias is not None:
-            with torch.no_grad():
-                initial_threshold_val = torch.exp(jump_relu_module.log_threshold.data)
-                bandwidth = jump_relu_module.bandwidth
-                # Set the bias to be *above* the initial threshold,
-                nudge = bandwidth / 4.0
-                linear_layer.bias.copy_(initial_threshold_val + nudge)
+        # A small positive bias to get out of the "dead ReLU" region.
+        nn.init.constant_(linear_layer.bias, 0.001)
 
     def get_steering_vector(self, adapter_input: torch.Tensor) -> torch.Tensor:
         """Computes the steering vector from the trainable adapter."""
@@ -106,6 +85,10 @@ class SAEAdapter(SAE):
         # Statistics for loss and logging 
         # L1 norm: sum of absolute values (proper mathematical definition)
         self._current_steering_l1_norm = torch.sum(torch.abs(steered_activations))
+        
+        # L2 norm: mean of squared values (for regularization)
+        self._current_steering_l2_norm = torch.sum(steered_activations**2)
+
         # L0 norm: count of non-zero elements (averaged across batch)
         non_zero_mask = torch.abs(steered_activations) > 1e-6
         self._current_steering_l0_norm = torch.mean(non_zero_mask.float().sum(dim=-1))
@@ -205,10 +188,6 @@ class SAEAdapter(SAE):
         adapter_config = {
             "base_sae_release": self.cfg.release,
             "base_sae_id": self.cfg.sae_id,
-            "use_jump_relu": self.use_jump_relu,
-            "jump_relu_initial_threshold": self.jump_relu_initial_threshold,
-            "jump_relu_bandwidth": self.jump_relu_bandwidth,
-            "sae_config": self.cfg.to_dict()
         }
         with open(path / CUSTOM_CONFIG_NAME, 'w') as f:
             json.dump(adapter_config, f, indent=4)
@@ -228,19 +207,12 @@ class SAEAdapter(SAE):
         with open(path / CUSTOM_CONFIG_NAME, 'r') as f:
             config = json.load(f)
 
-        adapter_init_args = {
-            "use_jump_relu": config.get("use_jump_relu", True),
-            "jump_relu_initial_threshold": config.get("jump_relu_initial_threshold", 0.01),
-            "jump_relu_bandwidth": config.get("jump_relu_bandwidth", 0.01),
-        }
-
         # Create the full model instance by calling our own from_pretrained
         instance, _, _ = cls.from_pretrained(
             release=config["base_sae_release"],
             sae_id=config["base_sae_id"],
             device=device,
             force_download=force_download,
-            **adapter_init_args
         )
 
         # Load the locally saved adapter weights

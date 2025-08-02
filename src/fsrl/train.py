@@ -58,17 +58,11 @@ def load_model_and_tokenizer(model_config: DictConfig) -> tuple:
 
 def load_sae_adapter(sae_config: DictConfig, device: str) -> SAEAdapter:
     """Load and configure the SAE adapter."""
-    adapter_kwargs = {
-        "use_jump_relu": sae_config.get("use_jump_relu", True),
-        "jump_relu_initial_threshold": sae_config.get("jump_relu_initial_threshold", 0.001),
-        "jump_relu_bandwidth": sae_config.get("jump_relu_bandwidth", 0.001),
-    }
     
     sae, cfg_dict, sparsity = SAEAdapter.from_pretrained(
         sae_config.release, 
         sae_config.sae_id, 
-        device=device, 
-        **adapter_kwargs
+        device=device,
     )
     
     dtype = dtype_map.get(sae_config.dtype, torch.bfloat16)
