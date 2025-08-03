@@ -72,7 +72,7 @@ class SAEAdapter(SAE):
         activation_layer = self.adapter.activation
         with torch.no_grad():
             # Get the initial value from the JumpReLU's log_threshold parameter
-            initial_threshold_value = torch.exp(activation_layer.log_threshold).mean()
+            initial_threshold_value = torch.exp(activation_layer.log_threshold)
         
         nn.init.constant_(linear_layer.bias, initial_threshold_value)
 
