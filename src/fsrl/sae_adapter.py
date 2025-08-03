@@ -7,6 +7,7 @@ from pathlib import Path
 from safetensors.torch import save_file, load_file
 from transformer_lens.hook_points import HookPoint
 from contextlib import contextmanager
+from .jump_relu import JumpReLU
 
 CUSTOM_CONFIG_NAME = 'fsrl_adapter_config.json'
 
@@ -37,11 +38,10 @@ class SAEAdapter(SAE):
         for param in self.parameters():
             param.requires_grad = False
         
-        self.adapter = nn.Sequential(
-            nn.Linear(self.cfg.d_in, self.cfg.d_sae, bias=True),
-            nn.ReLU()
-        )
-        
+        self.adapter = nn.Module()
+        self.adapter.linear = nn.Linear(self.cfg.d_in, self.cfg.d_sae, bias=True)
+        self.adapter.activation = JumpReLU(num_features=self.cfg.d_sae)
+
         self._initialize_adapter()
         
         self.adapter.to(self.device, self.dtype)
@@ -63,30 +63,35 @@ class SAEAdapter(SAE):
         A simple initialization to kickstart learning.
         A small positive bias ensures the ReLU is active for some inputs initially.
         """
-        linear_layer = self.adapter[0]
-        # Uniform initialization for weights
-        nn.init.uniform_(linear_layer.weight, -1e-9, 1e-9)
-        # A small positive bias to get out of the "dead ReLU" region.
-        nn.init.constant_(linear_layer.bias, 0.0)
+        
+        # Weights
+        linear_layer = self.adapter.linear
+        nn.init.normal_(linear_layer.weight, std=1e-3)
+        
+        # Biases
+        activation_layer = self.adapter.activation
+        with torch.no_grad():
+            initial_threshold_value = torch.exp(activation_layer.log_threshold).mean()
+        nn.init.constant_(linear_layer.bias, initial_threshold_value)
 
     def get_steering_vector(self, adapter_input: torch.Tensor) -> torch.Tensor:
         """Computes the steering vector from the trainable adapter."""
         
         # Ensures adapter receives same input as regular SAE
         adapter_input = adapter_input - (self.b_dec * self.cfg.apply_b_dec_to_input)
-
-        steered_activations = self.adapter(adapter_input.to(self.dtype))
+        
+        # JumpReLU now returns both the final activations and the sparsity mask
+        pre_activations = self.adapter.linear(adapter_input.to(self.dtype))
+        steered_activations, sparsity_mask = self.adapter.activation(pre_activations)
+        steered_activations = self.hook_sae_adapter(steered_activations)
+        
+        # L0 norm is the mean number of active features per example in the batch
+        self._current_steering_l0_norm = torch.sum(sparsity_mask, dim=-1).mean()
         
         # Statistics for loss and logging 
-        # L1 norm: mean of L1 norms across batch (sum over features, mean over batch)
+        # L1 and L2 norms: mean of norms across batch (sum over features, mean over batch)
         self._current_steering_l1_norm = torch.mean(torch.sum(torch.abs(steered_activations), dim=-1))
-        
-        # L2 norm: mean of L2 norms across batch (sum over features, mean over batch)
         self._current_steering_l2_norm = torch.mean(torch.sum(steered_activations**2, dim=-1))
-
-        # L0 norm: mean fraction of non-zero elements across batch
-        non_zero_mask = torch.abs(steered_activations) > 1e-6
-        self._current_steering_l0_norm = torch.mean(non_zero_mask.float().sum(dim=-1))
         
         return steered_activations
 
