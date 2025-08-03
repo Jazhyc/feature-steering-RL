@@ -41,31 +41,41 @@ class _JumpReLUWithSparsity(torch.autograd.Function):
         pre_activations, threshold = ctx.saved_tensors
         bandwidth = ctx.bandwidth
 
+        # Get the dtype and device from an existing tensor to ensure consistency.
+        dtype = pre_activations.dtype
+        device = pre_activations.device
+
         # --- Gradient for the Pre-activations (input x) ---
         # This only comes from the reconstruction loss path (via post_activations).
         # The L0 loss does not train the pre-activations.
-        grad_pre_activations = grad_post_activations * (pre_activations > threshold).float()
+        is_active_mask = (pre_activations > threshold).to(dtype)
+        grad_pre_activations = grad_post_activations * is_active_mask
         
         # --- Gradient for the Threshold (learnable parameter θ) ---
         diff = pre_activations - threshold
-        rectangle_window = (torch.abs(diff) < (bandwidth / 2.0)).float()
+        half_bandwidth = torch.tensor(bandwidth / 2.0, dtype=dtype, device=device)
+        rectangle_window = (torch.abs(diff) < half_bandwidth).to(dtype)
 
         # Part 1: Gradient from the reconstruction loss (from grad_post_activations)
-        # This corresponds to Eq. (11) in the paper
+        # This corresponds to Eq. (11) in the paper.
         grad_from_recon = -(threshold / bandwidth) * rectangle_window
         grad_from_recon *= grad_post_activations
 
         # Part 2: Gradient from the sparsity loss (from grad_sparsity_mask)
-        # This corresponds to Eq. (12) in the paper
-        grad_from_sparsity = -(1.0 / bandwidth) * rectangle_window
+        # This corresponds to Eq. (12) in the paper.
+        inv_bandwidth = torch.tensor(1.0 / bandwidth, dtype=dtype, device=device)
+        grad_from_sparsity = -inv_bandwidth * rectangle_window
         grad_from_sparsity *= grad_sparsity_mask
 
-        # Total gradient for the threshold is the sum of both paths
-        grad_threshold = grad_from_recon + grad_from_sparsity
-        grad_from_recon = grad_from_recon.sum(dim=0)  # Sum over batch
+        # Total gradient for the threshold is the sum of both paths.
+        total_grad_for_threshold = grad_from_recon + grad_from_sparsity
 
-        # Return gradients for each input of forward(): pre_activations, threshold, bandwidth
-        return grad_pre_activations, grad_threshold, None
+        # The gradient for the threshold parameter must match its shape (num_features,).
+        # We sum over dim=0 (the batch dimension) to achieve this.
+        total_grad_for_threshold = total_grad_for_threshold.sum(dim=0)
+        
+        # Return gradients for each input of forward(): pre_activations, threshold, bandwidth.
+        return grad_pre_activations, total_grad_for_threshold, None
 
 class JumpReLU(nn.Module):
     """
