@@ -26,7 +26,7 @@ class _JumpReLUWithSparsity(torch.autograd.Function):
         ctx.bandwidth = bandwidth
 
         # Output 1: Sparsity mask (just the Heaviside result)
-        sparsity_mask = (pre_activations > threshold).float()
+        sparsity_mask = (pre_activations > threshold).to(pre_activations.dtype)
 
         # Output 2: JumpReLU post-activations
         post_activations = pre_activations * sparsity_mask
