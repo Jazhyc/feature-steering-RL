@@ -66,7 +66,7 @@ class SAEAdapter(SAE):
         
         # Weights
         linear_layer = self.adapter.linear
-        nn.init.normal_(linear_layer.weight, std=1e-6)
+        nn.init.uniform_(linear_layer.weight, a=-1e-6, b=1e-6)
         
         # Biases
         activation_layer = self.adapter.activation
