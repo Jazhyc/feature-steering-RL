@@ -280,6 +280,7 @@ class SimPOTrainer(Trainer):
         self.loss_type = args.loss_type
         self.l0_act_coeff = args.l0_act_coeff
         self.l1_act_coeff = args.l1_act_coeff
+        self.l2_act_coeff = args.l2_act_coeff
 
         self._stored_metrics = defaultdict(lambda: defaultdict(list))
 
@@ -786,8 +787,8 @@ class SimPOTrainer(Trainer):
             loss += l1_norm
             metrics[f"{prefix}steering_vector/l1_penalty"] = l1_norm.detach().cpu()
             
-        if self.args.l2_act_coeff > 0:
-            l2_norm = model.get_steering_l2_norm() * self.args.l2_act_coeff
+        if self.l2_act_coeff > 0:
+            l2_norm = model.get_steering_l2_norm() * self.l2_act_coeff
             loss += l2_norm
             metrics[f"{prefix}steering_vector/l2_penalty"] = l2_norm.detach().cpu()
 
