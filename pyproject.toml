@@ -32,6 +32,11 @@ build-backend = "setuptools.build_meta"
 # Search all indexes.
 index-strategy = "unsafe-best-match"
 
+override-dependencies = [
+  "datasets>=3.0.0",
+]
+
+
 # Define the official PyTorch CUDA 12.8 index
 [[tool.uv.index]]
 name = "pytorch"
