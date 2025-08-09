@@ -65,6 +65,7 @@ class SimPOConfig(TrainingArguments):
     l0_act_coeff: float = 0.0
     l1_act_coeff: float = 0.0
     l2_act_coeff: float = 0.0
+    log_threshold_lr_multiplier: float = 100.0
 
     label_pad_token_id: int = -100
     padding_value: int = None

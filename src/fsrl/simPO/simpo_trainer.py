@@ -965,6 +965,107 @@ class SimPOTrainer(Trainer):
         del self._stored_metrics[train_eval]
         return super().log(logs, start_time)
 
+    def create_optimizer(self):
+        """
+        Setup the optimizer with different learning rates for log_threshold parameters.
+        
+        This method creates parameter groups with different learning rates:
+        - Regular parameters use the base learning rate
+        - log_threshold parameters use base_lr * log_threshold_lr_multiplier
+        """
+        from transformers.utils import is_sagemaker_mp_enabled
+        
+        opt_model = self.model_wrapped if is_sagemaker_mp_enabled() else self.model
+
+        if self.optimizer is None:
+            decay_parameters = self.get_decay_parameter_names(opt_model)
+            
+            # Create parameter groups with different learning rates
+            optimizer_grouped_parameters = []
+            
+            # Standard parameters with weight decay
+            standard_params_with_decay = []
+            standard_params_without_decay = []
+            
+            # log_threshold parameters (separate group with higher learning rate)
+            log_threshold_params = []
+            
+            for name, param in opt_model.named_parameters():
+                if not param.requires_grad:
+                    continue
+                    
+                if 'log_threshold' in name:
+                    log_threshold_params.append(param)
+                elif name in decay_parameters:
+                    standard_params_with_decay.append(param)
+                else:
+                    standard_params_without_decay.append(param)
+            
+            # Add standard parameter groups
+            if standard_params_with_decay:
+                optimizer_grouped_parameters.append({
+                    "params": standard_params_with_decay,
+                    "weight_decay": self.args.weight_decay,
+                })
+            
+            if standard_params_without_decay:
+                optimizer_grouped_parameters.append({
+                    "params": standard_params_without_decay,
+                    "weight_decay": 0.0,
+                })
+            
+            # Add log_threshold parameter group with higher learning rate
+            if log_threshold_params:
+                log_threshold_lr = self.args.learning_rate * self.args.log_threshold_lr_multiplier
+                optimizer_grouped_parameters.append({
+                    "params": log_threshold_params,
+                    "weight_decay": 0.0,  # No weight decay for log_threshold
+                    "lr": log_threshold_lr,
+                })
+                print(f"Setting log_threshold learning rate to {log_threshold_lr} "
+                      f"(base_lr={self.args.learning_rate} * multiplier={self.args.log_threshold_lr_multiplier})")
+
+            if self.optimizer_cls_and_kwargs is not None:
+                optimizer_cls, optimizer_kwargs = self.optimizer_cls_and_kwargs
+            else:
+                optimizer_cls, optimizer_kwargs = self.get_optimizer_cls_and_kwargs(self.args, opt_model)
+
+            # Overwrite `params` in case it's created by `get_optimizer_cls_and_kwargs`
+            # e.g. for GaLore optimizer.
+            if "params" in optimizer_kwargs:
+                optimizer_grouped_parameters = optimizer_kwargs.pop("params")
+
+            # Overwrite `model` in case it's created by `get_optimizer_cls_and_kwargs`
+            # e.g. for LOMO optimizer.
+            if "model" in optimizer_kwargs:
+                optimizer_grouped_parameters = optimizer_kwargs.pop("model")
+
+            # For layer-wise dummy optimizers we overwrite optimizer_grouped_parameters with `optimizer_dict`
+            # to avoid arguments conflicts.
+            if "optimizer_dict" in optimizer_kwargs:
+                optimizer_grouped_parameters = optimizer_kwargs.pop("optimizer_dict")
+
+            self.optimizer = optimizer_cls(optimizer_grouped_parameters, **optimizer_kwargs)
+
+            # Handle bitsandbytes optimizer if needed (keeping original logic)
+            if "bitsandbytes" in str(optimizer_cls) and optimizer_kwargs.get("optim_bits", None) == 8:
+                import bitsandbytes
+                from transformers.utils import logging
+                
+                logger = logging.get_logger(__name__)
+                manager = bitsandbytes.optim.GlobalOptimManager.get_instance()
+
+                skipped = 0
+                for module in opt_model.modules():
+                    if isinstance(module, torch.nn.Embedding):
+                        skipped += sum({p.data_ptr(): p.numel() for p in module.parameters()}.values())
+                        logger.info(f"skipped {module}: {skipped / 2**20}M params")
+                        manager.register_module_override(module, "weight", {"optim_bits": 32})
+                        logger.debug(f"bitsandbytes: will optimize {module} in fp32")
+                logger.info(f"skipped: {skipped / 2**20}M params")
+
+        return self.optimizer
+
     def _save(self, output_dir: Optional[str] = None, state_dict=None):
         """
         Override the default save method to handle SAEAdapter custom saving.

@@ -12,7 +12,7 @@ dataloader_pin_memory: true
 
 # Training optimizations
 bf16: true
-optim: "adamw_8bit"
+optim: "adamw_torch_fused"
 torch_compile: true
 lr_scheduler_type: cosine
 warmup_ratio: 0.01
@@ -24,9 +24,10 @@ beta: 10
 gamma_beta_ratio: 0.5
 max_prompt_length: 128
 max_length: 512
-l0_act_coeff: 1e-2
+l0_act_coeff: 1
 l1_act_coeff: 0
 l2_act_coeff: 0
+log_threshold_lr_multiplier: 1
 
 # Additional training parameters
 save_steps: 10000
