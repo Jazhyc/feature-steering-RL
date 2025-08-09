@@ -53,10 +53,11 @@ class SAEAdapter(SAE):
         # Ensure log_threshold stays in fp32 for numerical stability
         self.log_threshold.data = self.log_threshold.data.to(torch.float32)
 
-        # Instance variables for logging
-        self._current_steering_l0_norm = torch.tensor(0.0)
-        self._current_steering_l1_norm = torch.tensor(0.0)
-        self._current_steering_l2_norm = torch.tensor(0.0)
+        # Registers for logging and auxiliary losses
+        self.register_buffer('_norm_accumulator_l0', torch.tensor(0.0))
+        self.register_buffer('_norm_accumulator_l1', torch.tensor(0.0))
+        self.register_buffer('_norm_accumulator_l2', torch.tensor(0.0))
+        self.register_buffer('_accumulation_step_counter', torch.tensor(0.0))
         
         # Create hook points for the adapter to cache activations or for interventions
         self.hook_sae_adapter = HookPoint()
@@ -113,13 +114,20 @@ class SAEAdapter(SAE):
         
         sparsity_mask = Step.apply(pre_activations, threshold_tensor, bandwidth_tensor)
 
-        # L0 norm is the mean ratio of active features per example in the batch
-        self._current_steering_l0_norm = torch.sum(sparsity_mask, dim=-1).mean() / self.cfg.d_sae
+        with torch.no_grad():
+            # L0 norm is the mean ratio of active features per example in the batch
+            micro_l0_norm = torch.sum(sparsity_mask, dim=-1).mean()
 
-        # Statistics for loss and logging
-        # L1 and L2 norms: mean of norms across batch (sum over features, mean over batch)
-        self._current_steering_l1_norm = torch.mean(torch.sum(torch.abs(steered_activations), dim=-1))
-        self._current_steering_l2_norm = torch.mean(torch.sum(steered_activations**2, dim=-1))
+            # Statistics for loss and logging
+            # L1 and L2 norms: mean of norms across batch (sum over features, mean over batch)
+            micro_l1_norm = torch.mean(torch.sum(torch.abs(steered_activations), dim=-1))
+            micro_l2_norm = torch.mean(torch.sum(steered_activations**2, dim=-1))
+            
+            # Add to the accumulators
+            self._norm_accumulator_l0 += micro_l0_norm
+            self._norm_accumulator_l1 += micro_l1_norm
+            self._norm_accumulator_l2 += micro_l2_norm
+            self._accumulation_step_counter += 1
         
         return steered_activations
 
@@ -192,26 +200,27 @@ class SAEAdapter(SAE):
         """Returns the adapter's trainable parameters for an optimizer."""
         return [self.adapter_linear.weight, self.adapter_linear.bias, self.log_threshold]
     
-    def get_steering_l1_norm(self) -> torch.Tensor:
-        """
-        Returns the L1 norm (sum of absolute values) of the steering vector from the most recent forward pass.
-        This value can be used both for logging and as the L1 penalty in the loss function.
-        """
-        return self._current_steering_l1_norm
-    
-    def get_steering_l2_norm(self) -> torch.Tensor:
-        """
-        Returns the L2 norm (sum of squared values) of the steering vector from the most recent forward pass.
-        This value can be used for L2 regularization or logging.
-        """
-        return self._current_steering_l2_norm
-    
     def get_steering_l0_norm(self) -> torch.Tensor:
-        """
-        Returns the L0 norm (sparsity) of the steering vector from the most recent forward pass.
-        This represents the fraction of non-zero activations in the steering vector.
-        """
-        return self._current_steering_l0_norm
+        if self._accumulation_step_counter > 0:
+            return self._norm_accumulator_l0 / self._accumulation_step_counter
+        return torch.tensor(0.0, device=self.device)
+
+    def get_steering_l1_norm(self) -> torch.Tensor:
+        if self._accumulation_step_counter > 0:
+            return self._norm_accumulator_l1 / self._accumulation_step_counter
+        return torch.tensor(0.0, device=self.device)
+
+    def get_steering_l2_norm(self) -> torch.Tensor:
+        if self._accumulation_step_counter > 0:
+            return self._norm_accumulator_l2 / self._accumulation_step_counter
+        return torch.tensor(0.0, device=self.device)
+    
+    # Required for compatibility for gradient accumulation
+    def reset_norm_accumulators(self):
+        self._norm_accumulator_l0.zero_()
+        self._norm_accumulator_l1.zero_()
+        self._norm_accumulator_l2.zero_()
+        self._accumulation_step_counter.zero_()
     
     def save_adapter(self, path: str | Path):
         """Saves only the trainable adapter weights and its configuration."""
