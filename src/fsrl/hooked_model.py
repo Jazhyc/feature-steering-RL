@@ -160,21 +160,7 @@ class HookedModel(nn.Module):
         """Helper to get only the adapter's trainable parameters for the optimizer."""
         # This remains unchanged as it correctly points to the adapter's params.
         return self.sae_adapter.get_trainable_parameters()
-    
-    def get_steering_l1_norm(self) -> torch.Tensor:
-        """
-        Returns the L1 norm of the steering vector from the most recent forward pass.
-        This value can be used both for logging and as the L1 penalty in the loss function.
-        """
-        return self.sae_adapter.get_steering_l1_norm()
-    
-    def get_steering_l2_norm(self) -> torch.Tensor:
-        """
-        Returns the L2 norm (mean of squared values) of the steering vector from the most recent forward pass.
-        This value can be used for regularization in the loss function.
-        """
-        return self.sae_adapter.get_steering_l2_norm()
-    
-    def get_steering_l0_norm(self) -> torch.Tensor:
-        """Returns the L0 norm (sparsity) of the steering vector from the most recent forward pass."""
-        return self.sae_adapter.get_steering_l0_norm()
+
+    def get_norms(self) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Helper to get the adapter's norm values."""
+        return self.sae_adapter.get_norms()

@@ -61,13 +61,8 @@ def load_sae_adapter(sae_config: DictConfig, device: str) -> SAEAdapter:
     """Load and configure the SAE adapter."""
     
     sae, cfg_dict, sparsity = SAEAdapter.from_pretrained(
-        sae_config.release, 
-        sae_config.sae_id, 
-        device=device,
+        **sae_config,
     )
-    
-    dtype = dtype_map.get(sae_config.dtype, torch.bfloat16)
-    sae.to(dtype=dtype)
     
     return sae
 
@@ -147,7 +142,7 @@ def create_trainer(
         processing_class=tokenizer,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
-        callbacks=[NormAccumulatorResetCallback()]
+        callbacks=[DebugInspector()]
     )
     
     return trainer

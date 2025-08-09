@@ -41,8 +41,8 @@ class SAEAdapter(SAE):
         
         self.adapter_linear = nn.Linear(self.cfg.d_in, self.cfg.d_sae, bias=True)
         
-        initial_threshold = kwargs.get("initial_threshold", 0.001)
-        self.bandwidth = kwargs.get("bandwidth", 0.001)
+        initial_threshold = kwargs.get("initial_threshold")
+        self.bandwidth = kwargs.get("bandwidth")
         self.log_threshold = nn.Parameter(
             torch.full((self.cfg.d_sae,), torch.log(torch.tensor(initial_threshold)), dtype=torch.float32)
         )
@@ -54,10 +54,9 @@ class SAEAdapter(SAE):
         self.log_threshold.data = self.log_threshold.data.to(torch.float32)
 
         # Registers for logging and auxiliary losses
-        self.register_buffer('_norm_accumulator_l0', torch.tensor(0.0))
-        self.register_buffer('_norm_accumulator_l1', torch.tensor(0.0))
-        self.register_buffer('_norm_accumulator_l2', torch.tensor(0.0))
-        self.register_buffer('_accumulation_step_counter', torch.tensor(0.0))
+        self.register_buffer('_norm_l0', torch.tensor(0.0))
+        self.register_buffer('_norm_l1', torch.tensor(0.0))
+        self.register_buffer('_norm_l2', torch.tensor(0.0))
         
         # Create hook points for the adapter to cache activations or for interventions
         self.hook_sae_adapter = HookPoint()
@@ -82,8 +81,9 @@ class SAEAdapter(SAE):
         
         # Restore log_threshold to fp32 without any intermediate conversions
         if hasattr(self, 'log_threshold'):
-            self.log_threshold.data = original_log_threshold.to(torch.float32)
-        
+            device = self.adapter_linear.weight.device
+            self.log_threshold.data = original_log_threshold.to(device)
+
         return result
         
     def _initialize_adapter(self):
@@ -104,6 +104,9 @@ class SAEAdapter(SAE):
         
         # JumpReLU now returns both the final activations and the sparsity mask
         pre_activations = self.adapter_linear(adapter_input.to(self.dtype))
+        
+        # Apply relu
+        pre_activations = F.relu(pre_activations)
 
         # Convert threshold to match pre_activations dtype for computation
         threshold_tensor = self.threshold.to(pre_activations.dtype)
@@ -113,21 +116,14 @@ class SAEAdapter(SAE):
         steered_activations = self.hook_sae_adapter(steered_activations)
         
         sparsity_mask = Step.apply(pre_activations, threshold_tensor, bandwidth_tensor)
+        
+        # L0 norm is the mean ratio of active features per example in the batch
+        self._norm_l0 = torch.sum(sparsity_mask, dim=-1).mean()
 
-        with torch.no_grad():
-            # L0 norm is the mean ratio of active features per example in the batch
-            micro_l0_norm = torch.sum(sparsity_mask, dim=-1).mean()
-
-            # Statistics for loss and logging
-            # L1 and L2 norms: mean of norms across batch (sum over features, mean over batch)
-            micro_l1_norm = torch.mean(torch.sum(torch.abs(steered_activations), dim=-1))
-            micro_l2_norm = torch.mean(torch.sum(steered_activations**2, dim=-1))
-            
-            # Add to the accumulators
-            self._norm_accumulator_l0 += micro_l0_norm
-            self._norm_accumulator_l1 += micro_l1_norm
-            self._norm_accumulator_l2 += micro_l2_norm
-            self._accumulation_step_counter += 1
+        # Statistics for loss and logging
+        # L1 and L2 norms: mean of norms across batch (sum over features, mean over batch)
+        self._norm_l1 = torch.mean(torch.sum(torch.abs(steered_activations), dim=-1))
+        self._norm_l2 = torch.mean(torch.sum(steered_activations**2, dim=-1))
         
         return steered_activations
 
@@ -199,28 +195,10 @@ class SAEAdapter(SAE):
     def get_trainable_parameters(self) -> list[nn.Parameter]:
         """Returns the adapter's trainable parameters for an optimizer."""
         return [self.adapter_linear.weight, self.adapter_linear.bias, self.log_threshold]
-    
-    def get_steering_l0_norm(self) -> torch.Tensor:
-        if self._accumulation_step_counter > 0:
-            return self._norm_accumulator_l0 / self._accumulation_step_counter
-        return torch.tensor(0.0, device=self.device)
 
-    def get_steering_l1_norm(self) -> torch.Tensor:
-        if self._accumulation_step_counter > 0:
-            return self._norm_accumulator_l1 / self._accumulation_step_counter
-        return torch.tensor(0.0, device=self.device)
-
-    def get_steering_l2_norm(self) -> torch.Tensor:
-        if self._accumulation_step_counter > 0:
-            return self._norm_accumulator_l2 / self._accumulation_step_counter
-        return torch.tensor(0.0, device=self.device)
-    
-    # Required for compatibility for gradient accumulation
-    def reset_norm_accumulators(self):
-        self._norm_accumulator_l0.zero_()
-        self._norm_accumulator_l1.zero_()
-        self._norm_accumulator_l2.zero_()
-        self._accumulation_step_counter.zero_()
+    def get_norms(self) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Returns the current L0, L1, and L2 norms."""
+        return self._norm_l0, self._norm_l1, self._norm_l2
     
     def save_adapter(self, path: str | Path):
         """Saves only the trainable adapter weights and its configuration."""

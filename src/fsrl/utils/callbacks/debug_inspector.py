@@ -1,6 +1,7 @@
 import torch
 from transformers import TrainerCallback, TrainingArguments, TrainerState, TrainerControl
 
+NUM_STEPS_TO_CHECK = 100
 
 class DebugInspector(TrainerCallback):
     """
@@ -38,7 +39,7 @@ class DebugInspector(TrainerCallback):
 
     def on_step_begin(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
         # Only check on the first few steps to avoid spamming logs
-        if state.global_step <= 10:
+        if state.global_step <= NUM_STEPS_TO_CHECK:
             model = kwargs.get("model")
             if model is None:
                 return
@@ -50,7 +51,7 @@ class DebugInspector(TrainerCallback):
 
     def on_step_end(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
         # Only check on the first few steps
-        if state.global_step <= 10:
+        if state.global_step <= NUM_STEPS_TO_CHECK:
             model = kwargs.get("model")
             if not self.param_snapshots or model is None:
                 return

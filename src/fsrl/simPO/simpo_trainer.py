@@ -773,30 +773,30 @@ class SimPOTrainer(Trainer):
             
         # Store original loss in metrics
         metrics[f"{prefix}steering_vector/original_loss"] = loss.detach().cpu()
-        
+
+        l0_norm, l1_norm, l2_norm = model.get_norms()
+
         # Add L0 penalty
         if self.l0_act_coeff > 0:
-            steering_l0_penalty = model.get_steering_l0_norm() * self.l0_act_coeff
-            
+            l0_norm_penalty = l0_norm * self.l0_act_coeff
+
             # Add L0 penalty to the loss
-            loss += steering_l0_penalty
-            metrics[f"{prefix}steering_vector/l0_penalty"] = steering_l0_penalty.detach().cpu()
+            loss += l0_norm_penalty
+            metrics[f"{prefix}steering_vector/l0_penalty"] = l0_norm_penalty.detach().cpu()
             
         if self.l1_act_coeff > 0:
-            l1_norm = model.get_steering_l1_norm() * self.l1_act_coeff
-            loss += l1_norm
-            metrics[f"{prefix}steering_vector/l1_penalty"] = l1_norm.detach().cpu()
-            
+            l1_norm_penalty = l1_norm * self.l1_act_coeff
+            loss += l1_norm_penalty
+            metrics[f"{prefix}steering_vector/l1_penalty"] = l1_norm_penalty.detach().cpu()
+
         if self.l2_act_coeff > 0:
-            l2_norm = model.get_steering_l2_norm() * self.l2_act_coeff
-            loss += l2_norm
-            metrics[f"{prefix}steering_vector/l2_penalty"] = l2_norm.detach().cpu()
+            l2_norm_penalty = l2_norm * self.l2_act_coeff
+            loss += l2_norm_penalty
+            metrics[f"{prefix}steering_vector/l2_penalty"] = l2_norm_penalty.detach().cpu()
 
         # Log steering vector statistics for interpretability analysis
-        steering_l0_norm = model.get_steering_l0_norm()
-        steering_l1_norm = model.get_steering_l1_norm()
-        metrics[f"{prefix}steering_vector/l0_norm_sparsity"] = steering_l0_norm.detach().cpu()
-        metrics[f"{prefix}steering_vector/l1_norm_magnitude"] = steering_l1_norm.detach().cpu()
+        metrics[f"{prefix}steering_vector/l0_norm_sparsity"] = l0_norm.detach().cpu()
+        metrics[f"{prefix}steering_vector/l1_norm_magnitude"] = l1_norm.detach().cpu()
         
         reward_accuracies = (chosen_rewards > rejected_rewards).float()
 
