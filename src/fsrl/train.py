@@ -17,6 +17,7 @@ from pathlib import Path
 from datasets import load_dataset
 from transformer_lens import HookedTransformer
 from fsrl import SAEAdapter, HookedModel, SimPOTrainer, SimPOConfig, apply_chat_template
+from fsrl.debug import DebugInspector
 import sys
 
 # Convert dtype string to torch dtype
@@ -146,6 +147,7 @@ def create_trainer(
         processing_class=tokenizer,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
+        callbacks=[DebugInspector()]
     )
     
     return trainer

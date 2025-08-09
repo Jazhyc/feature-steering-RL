@@ -7,7 +7,8 @@ from pathlib import Path
 from safetensors.torch import save_file, load_file
 from transformer_lens.hook_points import HookPoint
 from contextlib import contextmanager
-from .jump_relu import JumpReLU
+from torch.nn import functional as F
+from .jump_relu import JumpReLU, Step
 
 CUSTOM_CONFIG_NAME = 'fsrl_adapter_config.json'
 
@@ -38,13 +39,19 @@ class SAEAdapter(SAE):
         for param in self.parameters():
             param.requires_grad = False
         
-        self.adapter = nn.Module()
-        self.adapter.linear = nn.Linear(self.cfg.d_in, self.cfg.d_sae, bias=True)
-        self.adapter.activation = JumpReLU(num_features=self.cfg.d_sae)
+        self.adapter_linear = nn.Linear(self.cfg.d_in, self.cfg.d_sae, bias=True)
+        
+        initial_threshold = kwargs.get("initial_threshold", 0.01)
+        self.bandwidth = kwargs.get("bandwidth", 0.05)
+        self.log_threshold = nn.Parameter(
+            torch.full((self.cfg.d_sae,), torch.log(torch.tensor(initial_threshold)), dtype=torch.float32)
+        )
 
         self._initialize_adapter()
+        self.to(self.device, self.dtype)
         
-        self.adapter.to(self.device, self.dtype)
+        # Ensure log_threshold stays in fp32 for numerical stability
+        self.log_threshold.data = self.log_threshold.data.to(torch.float32)
 
         # Instance variables for logging
         self._current_steering_l0_norm = torch.tensor(0.0)
@@ -58,23 +65,35 @@ class SAEAdapter(SAE):
         # Add hooks to the hook manager
         self.setup()
         
+    @property
+    def threshold(self) -> torch.Tensor:
+        """Computes the threshold from the learnable log_threshold."""
+        return torch.exp(self.log_threshold)
+    
+    def to(self, *args, **kwargs):
+        """Override to method to keep log_threshold in fp32."""
+        # Store the original log_threshold to avoid dtype conversion
+        if hasattr(self, 'log_threshold'):
+            original_log_threshold = self.log_threshold.data.clone()
+        
+        # Call parent's to method
+        result = super().to(*args, **kwargs)
+        
+        # Restore log_threshold to fp32 without any intermediate conversions
+        if hasattr(self, 'log_threshold'):
+            self.log_threshold.data = original_log_threshold.to(torch.float32)
+        
+        return result
+        
     def _initialize_adapter(self):
         """
-        A simple initialization to kickstart learning.
-        A small positive bias ensures the ReLU is active for some inputs initially.
+        A simple initialization for the adapter weights and bias.
+        Set such that all biases are initialized to the initial threshold
         """
-        
-        # Weights
-        linear_layer = self.adapter.linear
-        nn.init.uniform_(linear_layer.weight, a=-1e-6, b=1e-6)
-        
-        # Biases
-        activation_layer = self.adapter.activation
-        with torch.no_grad():
-            # Get the initial value from the JumpReLU's log_threshold parameter
-            initial_threshold_value = torch.exp(activation_layer.log_threshold).mean()
-        
-        nn.init.constant_(linear_layer.bias, initial_threshold_value)
+        nn.init.normal_(self.adapter_linear.weight, mean=0.0, std=1e-6)
+        # Use the threshold value but ensure it matches the bias dtype
+        threshold_mean = self.threshold.mean().item()
+        nn.init.constant_(self.adapter_linear.bias, threshold_mean)
 
     def get_steering_vector(self, adapter_input: torch.Tensor) -> torch.Tensor:
         """Computes the steering vector from the trainable adapter."""
@@ -83,14 +102,21 @@ class SAEAdapter(SAE):
         adapter_input = adapter_input - (self.b_dec * self.cfg.apply_b_dec_to_input)
         
         # JumpReLU now returns both the final activations and the sparsity mask
-        pre_activations = self.adapter.linear(adapter_input.to(self.dtype))
-        steered_activations, sparsity_mask = self.adapter.activation(pre_activations)
+        pre_activations = self.adapter_linear(adapter_input.to(self.dtype))
+
+        # Convert threshold to match pre_activations dtype for computation
+        threshold_tensor = self.threshold.to(pre_activations.dtype)
+        bandwidth_tensor = torch.tensor(self.bandwidth, dtype=pre_activations.dtype, device=pre_activations.device)
+
+        steered_activations = JumpReLU.apply(pre_activations, threshold_tensor, bandwidth_tensor)
         steered_activations = self.hook_sae_adapter(steered_activations)
         
-        # L0 norm is the mean number of active features per example in the batch
-        self._current_steering_l0_norm = torch.sum(sparsity_mask, dim=-1).mean()
-        
-        # Statistics for loss and logging 
+        sparsity_mask = Step.apply(pre_activations, threshold_tensor, bandwidth_tensor)
+
+        # L0 norm is the mean ratio of active features per example in the batch
+        self._current_steering_l0_norm = torch.sum(sparsity_mask, dim=-1).mean() / self.cfg.d_sae
+
+        # Statistics for loss and logging
         # L1 and L2 norms: mean of norms across batch (sum over features, mean over batch)
         self._current_steering_l1_norm = torch.mean(torch.sum(torch.abs(steered_activations), dim=-1))
         self._current_steering_l2_norm = torch.mean(torch.sum(steered_activations**2, dim=-1))
@@ -164,7 +190,7 @@ class SAEAdapter(SAE):
 
     def get_trainable_parameters(self) -> list[nn.Parameter]:
         """Returns the adapter's trainable parameters for an optimizer."""
-        return list(self.adapter.parameters())
+        return [self.adapter_linear.weight, self.adapter_linear.bias, self.log_threshold]
     
     def get_steering_l1_norm(self) -> torch.Tensor:
         """
@@ -192,7 +218,14 @@ class SAEAdapter(SAE):
         path = Path(path)
         path.mkdir(parents=True, exist_ok=True)
         
-        save_file(self.adapter.state_dict(), path / "adapter_weights.safetensors")
+        # Get adapter state dict - the to() method already handles dtype preservation
+        adapter_state_dict = {
+            'adapter_linear.weight': self.adapter_linear.weight,
+            'adapter_linear.bias': self.adapter_linear.bias,
+            'log_threshold': self.log_threshold
+        }
+        
+        save_file(adapter_state_dict, path / "adapter_weights.safetensors")
 
         adapter_config = {
             "base_sae_release": self.cfg.release,
@@ -226,7 +259,11 @@ class SAEAdapter(SAE):
 
         # Load the locally saved adapter weights
         state_dict = load_file(path / "adapter_weights.safetensors", device=device)
-        instance.adapter.load_state_dict(state_dict)
+        
+        # Load weights normally - the to() method will handle dtype preservation
+        instance.adapter_linear.weight.data = state_dict['adapter_linear.weight']
+        instance.adapter_linear.bias.data = state_dict['adapter_linear.bias']
+        instance.log_threshold.data = state_dict['log_threshold']
         
         print(f"Adapter loaded from {path}")
         return instance
