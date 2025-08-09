@@ -41,8 +41,8 @@ class SAEAdapter(SAE):
         
         self.adapter_linear = nn.Linear(self.cfg.d_in, self.cfg.d_sae, bias=True)
         
-        initial_threshold = kwargs.get("initial_threshold", 0.01)
-        self.bandwidth = kwargs.get("bandwidth", 0.05)
+        initial_threshold = kwargs.get("initial_threshold", 0.001)
+        self.bandwidth = kwargs.get("bandwidth", 0.001)
         self.log_threshold = nn.Parameter(
             torch.full((self.cfg.d_sae,), torch.log(torch.tensor(initial_threshold)), dtype=torch.float32)
         )

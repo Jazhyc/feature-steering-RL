@@ -147,7 +147,6 @@ def create_trainer(
         processing_class=tokenizer,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
-        callbacks=[DebugInspector()]
     )
     
     return trainer
