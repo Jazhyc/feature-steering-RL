@@ -18,7 +18,7 @@ bf16: true
 torch_compile: true
 lr_scheduler_type: cosine
 warmup_ratio: 0.1
-gradient_accumulation_steps: 16
+gradient_accumulation_steps: 1
 activation_offloading: false
 deepspeed: config/deepspeed.json
 
