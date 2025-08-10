@@ -147,13 +147,13 @@ class SAEfeatureAnalyzer:
 
         return df, self._plot_steering_value_distribution(df)
     
-    def _plot_steering_value_distribution(self, df: pd.DataFrame):
+    def _plot_steering_value_distribution(self, df: pd.DataFrame) -> go.Figure:
         """
         Given a DataFrame with at least columns: 'steering_value', 'feature_idx', 'description',
         plot a detailed interactive distribution visualization.
 
-        Args:
-            df: DataFrame from get_steered_features_info with steering values and descriptions.
+        :param df: DataFrame from get_steered_features_info with steering values and descriptions.
+        :return: Figure object.
         """
 
         # Extract values
