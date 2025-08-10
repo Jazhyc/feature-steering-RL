@@ -97,6 +97,52 @@ class SAEfeatureAnalyzer:
 
         return IFrame(html, width=1200, height=600)
 
+    def get_steered_features_info(self, steering_vector: torch.Tensor, threshold: float = 1e-3, top_k: int | None = None) -> pd.DataFrame:
+        """
+        Given a steering vector (torch.Tensor), return a DataFrame
+        containing info about SAE features that are significantly steered.
+
+        :param steering_vector: 1D tensor of length equal to number of SAE features.
+        :param threshold: minimum absolute value for a feature to be considered "steered".
+        :param top_k: if specified, return only the top_k features by absolute steering value.
+
+        :return: pd.DataFrame with columns: feature_idx, steering_value, description, and other info if available.
+        """
+        if not isinstance(steering_vector, torch.Tensor):
+            steering_vector = torch.tensor(steering_vector)
+
+        # Ensure steering_vector is 1D and matches number of SAE features
+        assert steering_vector.ndim == 1, "steering_vector must be 1D"
+        assert steering_vector.shape[0] == self.sae.cfg.d_sae, (
+            f"steering_vector length {steering_vector.shape[0]} does not match SAE features {self.sae.cfg.d_sae}"
+        )
+
+        # Find indices of features with steering magnitude above threshold
+        steered_indices = (steering_vector.abs() > threshold).nonzero(as_tuple=True)[0]
+
+        data = []
+        for idx in steered_indices.tolist():
+            feature_val = steering_vector[idx].item()
+            info = self.feature_info.get(idx, {})
+            description = info.get("description", "No description available")
+            additional_info = {k: v for k, v in info.items() if k != "description"}
+            data.append({
+                "feature_idx": idx,
+                "steering_value": feature_val,
+                "description": description,
+                **additional_info,
+            })
+
+        df = pd.DataFrame(data)
+        # Sort by absolute steering value descending
+        df = df.sort_values(by="steering_value", key=lambda x: x.abs(), ascending=False).reset_index(drop=True)
+
+        # If top_k is specified, slice the top_k rows
+        if top_k is not None:
+            df = df.head(top_k)
+
+        return df
+
     def plot_logit_distr_skewness(self, save_path: str | None = None) -> None:
         if self.cached_feature_logit_distr is None:
             self.logit_distr()
