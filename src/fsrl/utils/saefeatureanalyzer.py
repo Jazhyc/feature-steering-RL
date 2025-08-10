@@ -1,3 +1,4 @@
+from typing import Tuple
 from fsrl.hooked_model import HookedModel
 from fsrl.sae_adapter import SAEAdapter
 from IPython.display import IFrame
@@ -101,7 +102,7 @@ class SAEfeatureAnalyzer:
 
         return IFrame(html, width=1200, height=600)
 
-    def get_steered_features_info(self, steering_vector: torch.Tensor, threshold: float = 1e-3, top_k: int | None = None) -> pd.DataFrame:
+    def get_steered_features_info(self, steering_vector: torch.Tensor, threshold: float = 1e-3, top_k: int | None = None) -> Tuple[pd.DataFrame, go.Figure]:
         """
         Given a steering vector (torch.Tensor), return a DataFrame
         containing info about SAE features that are significantly steered.
@@ -111,6 +112,7 @@ class SAEfeatureAnalyzer:
         :param top_k: if specified, return only the top_k features by absolute steering value.
 
         :return: pd.DataFrame with columns: feature_idx, steering_value, description, and other info if available.
+                 and a figure visualizing it.
         """
         if not isinstance(steering_vector, torch.Tensor):
             steering_vector = torch.tensor(steering_vector)
