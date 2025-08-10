@@ -66,6 +66,7 @@ class SimPOConfig(TrainingArguments):
     l1_act_coeff: float = 0.0
     l2_act_coeff: float = 0.0
     log_threshold_lr_multiplier: float = 100.0
+    penalty_warmup_ratio: float = 0.1  # Start applying penalties after 10% of training
 
     label_pad_token_id: int = -100
     padding_value: int = None
