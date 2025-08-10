@@ -10,7 +10,7 @@ sae:
   use_jump_relu: false  # Set to true to use JumpReLU instead of regular ReLU
   initial_threshold: 0.001  # Only used if use_jump_relu is true
   bandwidth: 0.001  # Only used if use_jump_relu is true
-  dtype: "float32"
+  dtype: "bfloat16"
 
 dataset:
   name: "princeton-nlp/llama3-ultrafeedback-armorm"

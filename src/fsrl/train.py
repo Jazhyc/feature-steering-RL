@@ -63,7 +63,10 @@ def load_sae_adapter(sae_config: DictConfig, device: str) -> SAEAdapter:
     sae, cfg_dict, sparsity = SAEAdapter.from_pretrained(
         **sae_config,
     )
-    
+
+    dtype = dtype_map.get(sae_config.dtype, torch.bfloat16)
+    sae.to(dtype)
+
     return sae
 
 
