@@ -7,8 +7,9 @@ model:
 sae:
   release: "gemma-scope-2b-pt-res"
   sae_id: "layer_12/width_65k/average_l0_21"
-  initial_threshold: 0.001
-  bandwidth: 0.001
+  use_jump_relu: false  # Set to true to use JumpReLU instead of regular ReLU
+  initial_threshold: 0.001  # Only used if use_jump_relu is true
+  bandwidth: 0.001  # Only used if use_jump_relu is true
   dtype: "float32"
 
 dataset:

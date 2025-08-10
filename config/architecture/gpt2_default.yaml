@@ -7,8 +7,9 @@ model:
 sae:
   release: "gpt2-small-res-jb"
   sae_id: "blocks.7.hook_resid_pre"
-  initial_threshold: 0.01
-  bandwidth: 0.05
+  use_jump_relu: false  # Set to true to use JumpReLU instead of regular ReLU
+  initial_threshold: 0.01  # Only used if use_jump_relu is true
+  bandwidth: 0.05  # Only used if use_jump_relu is true
   dtype: "float32"
 
 dataset:

@@ -1,7 +1,7 @@
 import torch
 from transformers import TrainerCallback, TrainingArguments, TrainerState, TrainerControl
 
-NUM_STEPS_TO_CHECK = 100
+NUM_STEPS_TO_CHECK = 10
 
 class DebugInspector(TrainerCallback):
     """
