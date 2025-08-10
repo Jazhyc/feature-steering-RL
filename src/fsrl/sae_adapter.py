@@ -193,7 +193,6 @@ class SAEAdapter(SAE):
         release: str,
         sae_id: str,
         device: str = "cpu",
-        dtype: torch.dtype = torch.bfloat16,
         force_download: bool = False,
         **adapter_kwargs: Any
     ) -> tuple["SAEAdapter", dict[str, Any], Optional[torch.Tensor]]:
@@ -207,9 +206,9 @@ class SAEAdapter(SAE):
             cfg=SAEConfig.from_dict(cfg_dict), 
             **adapter_kwargs
         )
-        
-        instance.to(dtype=dtype)
-        
+
+        instance.to(dtype=torch.bfloat16)
+
         # Manually add the release info to the config for later saving.
         instance.cfg.release = release
         instance.cfg.sae_id = sae_id
