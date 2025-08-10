@@ -75,7 +75,7 @@ class SAEAdapter(SAE):
         self.setup()
         
     @property
-    def threshold(self) -> torch.Tensor:
+    def adapter_threshold(self) -> torch.Tensor:
         """Computes the threshold from the learnable log_threshold (only for JumpReLU)."""
         if self.use_jump_relu:
             return torch.exp(self.log_threshold)
@@ -108,7 +108,7 @@ class SAEAdapter(SAE):
         
         if self.use_jump_relu:
             # Use the threshold value but ensure it matches the bias dtype
-            threshold_mean = self.threshold.mean().item()
+            threshold_mean = self.adapter_threshold.mean().item()
             nn.init.constant_(self.adapter_linear.bias, threshold_mean)
         else:
             # Initialize bias to zero for regular ReLU
@@ -128,7 +128,7 @@ class SAEAdapter(SAE):
 
         if self.use_jump_relu:
             # JumpReLU path - use threshold and bandwidth
-            threshold_tensor = self.threshold.to(pre_activations.dtype)
+            threshold_tensor = self.adapter_threshold.to(pre_activations.dtype)
             bandwidth_tensor = torch.tensor(self.bandwidth, dtype=pre_activations.dtype, device=pre_activations.device)
 
             steered_activations = JumpReLU.apply(pre_activations, threshold_tensor, bandwidth_tensor)
