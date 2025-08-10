@@ -8,6 +8,10 @@ import tqdm
 import torch
 import plotly_express as px
 import numpy as np
+import plotly.graph_objects as go
+import numpy as np
+import pandas as pd
+from scipy.stats import gaussian_kde
 
 class SAEfeatureAnalyzer:
     """
@@ -141,7 +145,76 @@ class SAEfeatureAnalyzer:
         if top_k is not None:
             df = df.head(top_k)
 
-        return df
+        return df, self._plot_steering_value_distribution(df)
+    
+    def _plot_steering_value_distribution(self, df: pd.DataFrame):
+        """
+        Given a DataFrame with at least columns: 'steering_value', 'feature_idx', 'description',
+        plot a detailed interactive distribution visualization.
+
+        Args:
+            df: DataFrame from get_steered_features_info with steering values and descriptions.
+        """
+
+        # Extract values
+        steering_values = df["steering_value"].values
+        feature_indices = df["feature_idx"].values
+        descriptions = df.get("description", ["No description"] * len(df))
+
+        # Colors by sign: positive = blue, negative = orange
+        colors = np.where(steering_values >= 0, 'royalblue', 'orange')
+
+        fig = go.Figure()
+
+        # Histogram
+        fig.add_trace(go.Histogram(
+            x=steering_values,
+            nbinsx=40,
+            marker_color='lightgrey',
+            name="Histogram",
+            opacity=0.6,
+            histnorm='probability density',  # normalize for overlaying KDE
+        ))
+
+        # Rug plot for individual points with hover info
+        fig.add_trace(go.Scatter(
+            x=steering_values,
+            y=np.zeros_like(steering_values),
+            mode='markers',
+            marker=dict(color=colors, size=10, symbol='line-ns-open'),
+            hovertemplate=(
+                "Feature: %{customdata[0]}<br>"
+                "Value: %{x:.5f}<br>"
+                "Desc: %{customdata[1]}"
+            ),
+            customdata=np.stack((feature_indices, descriptions), axis=-1),
+            showlegend=False,
+        ))
+
+        # KDE curve (smooth distribution)
+        kde = gaussian_kde(steering_values)
+        x_range = np.linspace(steering_values.min(), steering_values.max(), 500)
+        kde_values = kde(x_range)
+        fig.add_trace(go.Scatter(
+            x=x_range,
+            y=kde_values,
+            mode='lines',
+            name='KDE',
+            line=dict(color='darkblue', width=3),
+        ))
+
+        # Layout tweaks
+        fig.update_layout(
+            title="Steering Vector Distribution (Histogram + KDE + Rug Plot)",
+            xaxis_title="Steering Value",
+            yaxis_title="Density",
+            bargap=0.2,
+            height=450,
+            width=900,
+            hovermode="closest",
+        )
+
+        return fig
 
     def plot_logit_distr_skewness(self, save_path: str | None = None) -> None:
         if self.cached_feature_logit_distr is None:
