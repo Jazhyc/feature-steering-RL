@@ -1,0 +1,5 @@
+run_id,run_name,project_name,state,eval_loss,train_l0_norm_sparsity,l1_act_coeff,sae_id,layer
+v9krpkmb,usual-sun-1,Gemma2-2B-sparsity-sweep,finished,3.333672523498535,2056.7314453125,0.02,layer_12/width_65k/average_l0_21,12
+rk7petzy,dazzling-deluge-2,Gemma2-2B-sparsity-sweep,finished,4.22067403793335,1225.0743408203125,0.04,layer_12/width_65k/average_l0_21,12
+9ab1d51h,golden-snowflake-3,Gemma2-2B-sparsity-sweep,finished,2.845298767089844,4368.50244140625,0.008,layer_12/width_65k/average_l0_21,12
+8jhbxqwj,fanciful-flower-4,Gemma2-2B-sparsity-sweep,finished,2.7353322505950928,5411.2392578125,0.006,layer_12/width_65k/average_l0_21,12
