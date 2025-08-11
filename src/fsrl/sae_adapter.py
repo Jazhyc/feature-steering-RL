@@ -104,8 +104,8 @@ class SAEAdapter(SAE):
         For JumpReLU: biases are initialized to the initial threshold
         For ReLU: biases are initialized to zero
         """
-        nn.init.normal_(self.adapter_linear.weight, mean=0.0, std=1e-6)
-        
+        nn.init.uniform_(self.adapter_linear.weight, a=-1e-9, b=1e-9)
+
         if self.use_jump_relu:
             # Use the threshold value but ensure it matches the bias dtype
             threshold_mean = self.adapter_threshold.mean().item()
