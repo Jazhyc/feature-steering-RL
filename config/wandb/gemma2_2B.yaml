@@ -1,9 +1,9 @@
 # Weights & Biases Configuration
-project: "Gemma2-2B"
+project: "Gemma2-2B-clean"
 entity: "feature-steering-RL"
 dir: "logs"
 
 # Optional WandB settings
 tags: []
-notes: ""
+notes: "layer 12, l0=21"
 mode: "online"

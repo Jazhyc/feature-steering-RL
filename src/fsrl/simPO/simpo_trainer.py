@@ -281,6 +281,7 @@ class SimPOTrainer(Trainer):
         self.l0_act_coeff = args.l0_act_coeff
         self.l1_act_coeff = args.l1_act_coeff
         self.l2_act_coeff = args.l2_act_coeff
+        self.penalty_warmup_ratio = args.penalty_warmup_ratio
 
         self._stored_metrics = defaultdict(lambda: defaultdict(list))
 
@@ -737,6 +738,29 @@ class SimPOTrainer(Trainer):
             # Just sum the logps for each sequence
             return (per_token_logps * loss_mask).sum(-1)
 
+    def get_penalty_warmup_factor(self) -> float:
+        """
+        Calculate the penalty warmup factor based on current training progress.
+        
+        Returns:
+            float: Warmup factor between 0.0 and 1.0
+                  - 0.0 during warmup period (no penalties applied)
+                  - 1.0 after warmup period (full penalties applied)
+        """
+        if self.penalty_warmup_ratio <= 0:
+            return 1.0  # No warmup, always apply full penalties
+            
+        total_steps = self.state.max_steps if self.state.max_steps > 0 else (
+            len(self.get_train_dataloader()) * self.args.num_train_epochs
+        )
+        warmup_steps = int(total_steps * self.penalty_warmup_ratio)
+        current_step = self.state.global_step
+        
+        if current_step < warmup_steps:
+            return 0.0  # Still in warmup period
+        else:
+            return 1.0  # Past warmup period
+
     def get_batch_loss_metrics(
         self,
         model,
@@ -776,21 +800,25 @@ class SimPOTrainer(Trainer):
 
         l0_norm, l1_norm, l2_norm = model.get_norms()
 
-        # Add L0 penalty
+        # Get penalty warmup factor (only for training, always 1.0 for eval)
+        penalty_factor = self.get_penalty_warmup_factor() if train_eval == "train" else 1.0
+        metrics[f"{prefix}steering_vector/penalty_warmup_factor"] = penalty_factor
+
+        # Add L0 penalty with warmup
         if self.l0_act_coeff > 0:
-            l0_norm_penalty = l0_norm * self.l0_act_coeff
+            l0_norm_penalty = l0_norm * self.l0_act_coeff * penalty_factor
 
             # Add L0 penalty to the loss
             loss += l0_norm_penalty
             metrics[f"{prefix}steering_vector/l0_penalty"] = l0_norm_penalty.detach().cpu()
             
         if self.l1_act_coeff > 0:
-            l1_norm_penalty = l1_norm * self.l1_act_coeff
+            l1_norm_penalty = l1_norm * self.l1_act_coeff * penalty_factor
             loss += l1_norm_penalty
             metrics[f"{prefix}steering_vector/l1_penalty"] = l1_norm_penalty.detach().cpu()
 
         if self.l2_act_coeff > 0:
-            l2_norm_penalty = l2_norm * self.l2_act_coeff
+            l2_norm_penalty = l2_norm * self.l2_act_coeff * penalty_factor
             loss += l2_norm_penalty
             metrics[f"{prefix}steering_vector/l2_penalty"] = l2_norm_penalty.detach().cpu()
 
