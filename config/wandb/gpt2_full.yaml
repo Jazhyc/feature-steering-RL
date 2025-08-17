@@ -1,0 +1,9 @@
+# Weights & Biases Configuration for full GPT2 training
+project: "full-gemma2_2B"
+entity: "feature-steering-RL"
+dir: "logs"
+
+# Optional WandB settings
+tags: ["full-model", "gpt2", "no-sae"]
+notes: "Full GPT2 model training without SAE adapter"
+mode: "online"  # Options: "online", "offline", "disabled"

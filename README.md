@@ -65,40 +65,72 @@ WANDB_API_KEY=your_wandb_api_key_here
 
 ### Running Training
 
-To start training with default configuration:
+The project supports two training modes:
+
+#### SAE Adapter Training (Default)
+Train with Sparse Autoencoder adapters:
 ```bash
 uv run python src/fsrl/train.py
+# or
+uv run python src/fsrl/train.py --config-name=gpt2  # GPT-2 with SAE
+deepspeed src/fsrl/train.py --config-name=gemma2_2B  # Gemma2-2B with SAE
 ```
 
-You can override any configuration parameter from the command line:
+#### Full Model Training (No SAE)
+Train the complete model without SAE adapters:
 ```bash
-# Use a different premade config
-deepspeed src/fsrl/train.py --config-name=gemma2_2B
+uv run python src/fsrl/train.py --config-name=gpt2_full
+deepspeed src/fsrl/train.py --config-name=gemma2_2B_full
+```
 
-# Use different architecture and training configs
-uv run python src/fsrl/train.py architecture=gpt2_medium training=simpo_production
+### Loading Trained Models
 
-# Use test configuration for quick experiments
-uv run python src/fsrl/train.py training=simpo_test
+#### Loading SAE Adapter Models
+```python
+from fsrl import HookedModel, SAEAdapter
+from transformer_lens import HookedTransformer
 
-# Override specific parameters
-uv run python src/fsrl/train.py training.batch_size=4 training.learning_rate=5e-5
+# Load base model
+model = HookedTransformer.from_pretrained("gpt2")
 
-# Limit dataset size for testing
-uv run python src/fsrl/train.py architecture.dataset.sample_size=100
+# Load trained SAE adapter
+sae = SAEAdapter.from_pretrained("path/to/saved/adapter")
+
+# Create hooked model
+hooked_model = HookedModel(model, sae)
+```
+
+#### Loading Full Trained Models
+```python
+from fsrl import BaseHookedModel
+
+# Load full trained model directly
+model = BaseHookedModel.from_pretrained(
+    "path/to/saved/model",
+    device="cuda",
+    dtype="bfloat16"
+)
 ```
 
 ### Available Configurations
 
 **Architecture configurations:**
-- `gpt2_default` - GPT-2 small with default SAE settings
+- `gpt2_default` - GPT-2 small with SAE settings
+- `gpt2_full` - GPT-2 small without SAE (full model training)
+- `gemma2_2B` - Gemma2-2B with SAE settings  
+- `gemma2_2B_full` - Gemma2-2B without SAE (full model training)
 
 **Training configurations:**
-- `simpo_default` - Standard training settings (100 epochs, batch size 2)
+- `gpt2_default` - Standard GPT-2 training settings
+- `gpt2_full` - Full GPT-2 model training settings (same hyperparameters as SAE)
+- `gemma2_2B` - Standard Gemma2-2B training settings
+- `gemma2_2B_full` - Full Gemma2-2B model training settings (same hyperparameters as SAE)
 
 ### Training Features
 
-- **SimPO training**: Optimized training with Sparse Autoencoder adapters using LoRA
-- **WandB logging**: Automatic experiment tracking with randomly generated run names
+- **Dual Training Modes**: Support for both SAE adapter training and full model training
+- **SimPO training**: Optimized training with or without Sparse Autoencoder adapters
+- **Model Loading**: Easy loading of trained models with `from_pretrained` methods
+- **WandB logging**: Automatic experiment tracking with configurable project names
 - **Hydra configuration**: Easy parameter management and experiment reproducibility
 - **Environment variable support**: Secure configuration through .env files

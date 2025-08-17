@@ -24,7 +24,199 @@ def get_hf_space(model_name: str) -> str:
             return HF_SPACE_MAPPING[key]
     raise ValueError(f"Model name '{model_name}' does not match any known Hugging Face space.")
 
-class HookedModel(nn.Module):
+
+class BaseHookedModel(nn.Module):
+    """
+    Base wrapper for HookedTransformer that adds the config attribute
+    and ensures output compatibility with SimPOTrainer.
+    """
+    def __init__(self, model: HookedTransformer):
+        super().__init__()
+        self.model = model
+        
+        # Add config attribute that SimPOTrainer expects
+        space = get_hf_space(model.cfg.model_name)
+        self.config = AutoConfig.from_pretrained(f"{space}/{model.cfg.model_name}")
+        
+        # Get device from the model's parameters
+        try:
+            self.device = next(self.model.parameters()).device
+        except StopIteration:
+            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    
+    @classmethod
+    def from_pretrained(
+        cls, 
+        model_path: str, 
+        device: str = "cuda",
+        dtype: str = "bfloat16",
+        **kwargs
+    ) -> "BaseHookedModel":
+        """
+        Load a trained BaseHookedModel from a saved path.
+        
+        Args:
+            model_path: Path to the saved model directory
+            device: Device to load the model on
+            dtype: Data type for the model
+            **kwargs: Additional arguments for HookedTransformer.from_pretrained
+        
+        Returns:
+            BaseHookedModel instance with loaded weights
+        """
+        from pathlib import Path
+        import json
+        
+        # Auto-detect device if not specified or if cuda is requested but not available
+        if device == "cuda" and not torch.cuda.is_available():
+            device = "cpu"
+        
+        dtype_map = {
+            "float32": torch.float32,
+            "float16": torch.float16,
+            "bfloat16": torch.bfloat16,
+        }
+        torch_dtype = dtype_map.get(dtype, torch.bfloat16)
+        
+        model_path = Path(model_path)
+        
+        # Read the config to determine the base model name
+        config_path = model_path / "config.json"
+        if config_path.exists():
+            with open(config_path, 'r') as f:
+                config = json.load(f)
+            
+            # First try to get the original model name we saved
+            base_model_name = config.get('_original_model_name', None)
+            
+            # If not available, try _name_or_path
+            if base_model_name is None:
+                base_model_name = config.get('_name_or_path', None)
+            
+            # If still not available or points to a local path, use model_type
+            if base_model_name is None or ('/' in base_model_name and not base_model_name.startswith(('gpt2', 'meta-llama', 'google', 'microsoft'))):
+                model_type = config.get('model_type', 'gpt2')
+                if model_type == 'gpt2':
+                    # Fallback to gpt2 - this is the dangerous case you pointed out
+                    # We should log a warning here
+                    print(f"Warning: Using fallback model 'gpt2' for model_type '{model_type}'. Original model variant unknown.")
+                    base_model_name = 'gpt2'
+                elif model_type == 'gemma2':
+                    base_model_name = 'google/gemma-2-2b-it'
+                elif model_type == 'gemma':
+                    base_model_name = 'google/gemma-2-2b-it'
+                else:
+                    # For other model types, try to use the model_type directly
+                    base_model_name = model_type
+        else:
+            # Fallback to gpt2 if no config found
+            print("Warning: No config.json found. Using fallback model 'gpt2'.")
+            base_model_name = 'gpt2'
+        
+        # First load the base model architecture
+        base_model = HookedTransformer.from_pretrained_no_processing(
+            base_model_name,
+            device=device,
+            torch_dtype=torch_dtype,
+            attn_implementation="sdpa",
+            **kwargs
+        )
+        
+        # Then load the fine-tuned weights
+        model_file = model_path / "pytorch_model.bin"
+        if model_file.exists():
+            state_dict = torch.load(model_file, map_location=device)
+            # Remove any prefix that might be added during saving
+            cleaned_state_dict = {}
+            for key, value in state_dict.items():
+                # Remove 'model.' prefix if present
+                clean_key = key.replace('model.', '') if key.startswith('model.') else key
+                cleaned_state_dict[clean_key] = value
+            
+            base_model.load_state_dict(cleaned_state_dict, strict=True)
+        
+        return cls(base_model)
+    
+    def save_pretrained(self, save_path: str):
+        """
+        Save the model to the specified path.
+        
+        Args:
+            save_path: Directory path where to save the model
+        """
+        from pathlib import Path
+        import json
+        
+        save_path = Path(save_path)
+        save_path.mkdir(parents=True, exist_ok=True)
+        
+        # Save the underlying HookedTransformer model
+        # This will save both the model weights and config
+        if hasattr(self.model, 'save_pretrained'):
+            self.model.save_pretrained(str(save_path))
+            
+            # After saving, update the config to include the original model name
+            config_path = save_path / "config.json"
+            if config_path.exists():
+                with open(config_path, 'r') as f:
+                    config = json.load(f)
+                
+                # Add the original model name for proper loading later
+                config['_original_model_name'] = self.model.cfg.model_name
+                config['_name_or_path'] = self.model.cfg.model_name
+                
+                # Write back the updated config
+                with open(config_path, 'w') as f:
+                    json.dump(config, f, indent=2)
+        else:
+            # Fallback: save the model state dict and create config manually
+            torch.save(self.model.state_dict(), save_path / "pytorch_model.bin")
+            
+            # Save the config with original model name
+            if hasattr(self.config, 'to_dict'):
+                config_dict = self.config.to_dict()
+            else:
+                config_dict = vars(self.config)
+            
+            config_dict['_original_model_name'] = self.model.cfg.model_name  
+            config_dict['_name_or_path'] = self.model.cfg.model_name
+            
+            with open(save_path / "config.json", 'w') as f:
+                json.dump(config_dict, f, indent=2)
+    
+    def forward(self, tokens: torch.Tensor, **kwargs) -> CausalLMOutput:
+        """Forward pass that returns CausalLMOutput for SimPOTrainer compatibility."""
+        logits = self.model(tokens, **kwargs)
+        return CausalLMOutput(logits=logits)
+    
+    def generate(self, *args, **kwargs):
+        """Generates text using the model's generate method."""
+        return self.model.generate(*args, **kwargs)
+    
+    def tie_weights(self):
+        """Tie the weights of the input embedding and output layers."""
+        # Check if the HookedTransformer has tie_weights method
+        if hasattr(self.model, 'tie_weights') and callable(getattr(self.model, 'tie_weights')):
+            return self.model.tie_weights()
+        
+        # Check if the underlying PyTorch model (model.model) has tie_weights
+        elif hasattr(self.model, 'model') and hasattr(self.model.model, 'tie_weights') and callable(getattr(self.model.model, 'tie_weights')):
+            return self.model.model.tie_weights()
+        
+        # If no tie_weights method is found, this is likely fine for many models
+        pass
+
+    def get_norms(self) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """
+        Helper to get norm values for compatibility with SAE training.
+        Returns zeros since full model training doesn't use SAE adapters.
+        """
+        device = self.device
+        zero_tensor = torch.tensor(0.0, device=device)
+        return zero_tensor, zero_tensor, zero_tensor
+
+
+class HookedModel(BaseHookedModel):
     """
     Wraps a base LLM and an SAEAdapter for training and analysis.
 
@@ -33,20 +225,10 @@ class HookedModel(nn.Module):
     by replacing a HookPoint with the SAEAdapter module.
     """
     def __init__(self, model: HookedTransformer, sae_adapter: SAEAdapter):
-        super().__init__()
-        self.model = model
+        super().__init__(model)
         self.sae_adapter = sae_adapter
-        
-        space = get_hf_space(model.cfg.model_name)
-        self.config = AutoConfig.from_pretrained(f"{space}/{model.cfg.model_name}")
         self.hook_name = self.sae_adapter.cfg.hook_name
 
-        # Get device from the model's parameters
-        try:
-            self.device = next(self.model.parameters()).device
-        except StopIteration:
-            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        
         # This allows us to disable steering and restore the original model state.
         self._original_hook_point = self._get_deep_attr(self.model, self.hook_name)
         
@@ -96,30 +278,6 @@ class HookedModel(nn.Module):
         # We must call setup() for transformer-lens to recognize the change.
         self.model.setup()
 
-    def forward(self, tokens: torch.Tensor, **kwargs) -> CausalLMOutput:
-        """
-        Performs a forward pass. The behavior (steered or not) depends on
-        whether enable_steering() or disable_steering() was last called.
-
-        This method is now static and compatible with `torch.compile`.
-        """
-        # The logic is now handled by the model's structure, not dynamic hooks.
-        # We simply call the base model's forward pass.
-        logits = self.model(tokens, **kwargs)
-        
-        # We maintain the convenient CausalLMOutput wrapper.
-        return CausalLMOutput(logits=logits)
-    
-    def generate(self, *args, **kwargs):
-        """
-        Generates text using the model's generate method.
-        
-        Args:
-            *args: Positional arguments for generation
-            **kwargs: Keyword arguments for generation
-        """
-        return self.model.generate(*args, **kwargs)
-
     def run_with_cache(
         self, 
         tokens: torch.Tensor, 
@@ -137,24 +295,6 @@ class HookedModel(nn.Module):
         logits, cache = self.model.run_with_cache(tokens, 
                                                   **kwargs)
         return logits, cache
-
-    def tie_weights(self):
-        """
-        Tie the weights of the input embedding and output layers.
-        Delegates to the underlying model's tie_weights method if available.
-        This is needed for compatibility with evaluation libraries like lm_eval.
-        """
-        # Check if the HookedTransformer has tie_weights method
-        if hasattr(self.model, 'tie_weights') and callable(getattr(self.model, 'tie_weights')):
-            return self.model.tie_weights()
-        
-        # Check if the underlying PyTorch model (model.model) has tie_weights
-        elif hasattr(self.model, 'model') and hasattr(self.model.model, 'tie_weights') and callable(getattr(self.model.model, 'tie_weights')):
-            return self.model.model.tie_weights()
-        
-        # If no tie_weights method is found, this is likely fine for many models
-        # Some models don't need weight tying, so we'll just pass silently
-        pass
 
     def get_trainable_parameters(self) -> List[nn.Parameter]:
         """Helper to get only the adapter's trainable parameters for the optimizer."""

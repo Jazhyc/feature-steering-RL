@@ -16,7 +16,7 @@ from pathlib import Path
 
 from datasets import load_dataset
 from transformer_lens import HookedTransformer
-from fsrl import SAEAdapter, HookedModel, SimPOTrainer, SimPOConfig, apply_chat_template
+from fsrl import SAEAdapter, HookedModel, BaseHookedModel, SimPOTrainer, SimPOConfig, apply_chat_template
 from fsrl.utils.callbacks import DebugInspector, NormAccumulatorResetCallback
 import sys
 
@@ -198,11 +198,18 @@ def main(cfg: DictConfig) -> None:
     # Load model and tokenizer
     model, tokenizer, device = load_model_and_tokenizer(cfg.architecture.model)
     
-    # Load SAE adapter
-    sae = load_sae_adapter(cfg.architecture.sae, device)
+    # Check if we should use SAE adapter or train the full model
+    use_sae = cfg.architecture.get("use_sae", True)
     
-    # Create hooked model
-    sae_hooked_model = HookedModel(model, sae)
+    if use_sae:
+        # Load SAE adapter
+        sae = load_sae_adapter(cfg.architecture.sae, device)
+        
+        # Create hooked model
+        training_model = HookedModel(model, sae)
+    else:
+        # Use the base model with wrapper for full training
+        training_model = BaseHookedModel(model)
     
     # Load dataset
     train_dataset, eval_dataset = load_dataset_and_tokenizer(
@@ -212,7 +219,7 @@ def main(cfg: DictConfig) -> None:
     
     # Create trainer
     trainer = create_trainer(
-        sae_hooked_model, 
+        training_model, 
         tokenizer, 
         train_dataset,
         eval_dataset,
@@ -234,9 +241,21 @@ def main(cfg: DictConfig) -> None:
     print("Starting training...")
     trainer.train()
     
-    # Save the trained adapter to wandb
+    # Save the trained model/adapter
     run_name = wandb.run.name if wandb.run else None
-    save_adapter_to_wandb(sae, cfg, run_name)
+    if use_sae:
+        # Save the trained adapter to wandb
+        save_adapter_to_wandb(sae, cfg, run_name)
+    else:
+        # Save the full trained model
+        model_dir = Path(cfg.models_dir)
+        model_dir.mkdir(exist_ok=True)
+        folder_name = run_name if run_name else "trained_model"
+        model_path = model_dir / folder_name
+        
+        # Use the BaseHookedModel's save method for consistency
+        training_model.save_pretrained(str(model_path))
+        print(f"Full model saved to: {model_path.absolute()}")
     
     # Finish wandb run
     wandb.finish()

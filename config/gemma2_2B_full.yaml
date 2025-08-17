@@ -1,0 +1,14 @@
+# Main training configuration for full Gemma2-2B model (without SAE)
+defaults:
+  - architecture: gemma2_2B_full
+  - training: gemma2_2B_full
+  - wandb: gemma2_2B_full
+  - _self_
+
+# Model saving configuration
+models_dir: "models/Gemma2-2B-full"
+
+# Override any settings here if needed
+hydra:
+  run:
+    dir: logs/hydra_runs/${now:%Y-%m-%d_%H-%M-%S}

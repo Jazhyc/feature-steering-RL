@@ -1,0 +1,9 @@
+# Weights & Biases Configuration for full Gemma2-2B training
+project: "full-gemma2_2B"
+entity: "feature-steering-RL"
+dir: "logs"
+
+# Optional WandB settings
+tags: ["full-model", "gemma2-2b", "no-sae"]
+notes: "Full Gemma2-2B model training without SAE adapter"
+mode: "online"

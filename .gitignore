@@ -200,6 +200,7 @@ cython_debug/
 *.ckpt
 *.pt
 *.pth
+*.bin
 
 # Maybe this is too broad?
 *.json

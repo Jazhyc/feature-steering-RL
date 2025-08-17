@@ -1,0 +1,14 @@
+# Main training configuration for full GPT2 model (without SAE)
+defaults:
+  - architecture: gpt2_full
+  - training: gpt2_full
+  - wandb: gpt2_full
+  - _self_
+
+# Model saving configuration
+models_dir: "models/gpt2-full"
+
+# Override any settings here if needed
+hydra:
+  run:
+    dir: logs/hydra_runs/${now:%Y-%m-%d_%H-%M-%S}
