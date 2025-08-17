@@ -189,6 +189,45 @@ def save_adapter_to_wandb(sae: SAEAdapter, cfg: DictConfig, run_name: str = None
     print(f"Local copy saved to: {adapter_path.absolute()}")
 
 
+def save_full_model_to_wandb(model: "BaseHookedModel", cfg: DictConfig, run_name: str = None) -> None:
+    """Save the trained full model and configs to wandb as an artifact."""
+    
+    # Use run_name as the folder name, fallback to "trained_full_model" if no run_name
+    folder_name = run_name if run_name else "trained_full_model"
+    
+    # Create a permanent model directory using the path from config
+    model_dir = Path(cfg.models_dir)
+    model_dir.mkdir(exist_ok=True)
+    
+    model_path = model_dir / folder_name
+    
+    # Save the full model locally first
+    model.save_pretrained(str(model_path))
+    
+    # Create wandb artifact
+    artifact_name = f"full-model-{run_name}" if run_name else "trained-full-model"
+    artifact = wandb.Artifact(
+        name=artifact_name,
+        type="model",
+        description="Trained full model without SAE adapter",
+        metadata={
+            "base_model_name": model.model.cfg.model_name,
+            "training_config": OmegaConf.to_container(cfg.training, resolve=True),
+            "architecture_config": OmegaConf.to_container(cfg.architecture, resolve=True),
+            "use_sae": cfg.architecture.get("use_sae", False)
+        }
+    )
+    
+    # Add all files from the model directory to the artifact
+    artifact.add_dir(str(model_path), name="full_model")
+    
+    # Log the artifact to wandb
+    wandb.log_artifact(artifact)
+    
+    print(f"Full model saved to wandb as artifact: {artifact_name}")
+    print(f"Local copy saved to: {model_path.absolute()}")
+
+
 @hydra.main(version_base=None, config_path="../../config", config_name="gpt2")
 def main(cfg: DictConfig) -> None:
     """Main training function."""
@@ -247,15 +286,8 @@ def main(cfg: DictConfig) -> None:
         # Save the trained adapter to wandb
         save_adapter_to_wandb(sae, cfg, run_name)
     else:
-        # Save the full trained model
-        model_dir = Path(cfg.models_dir)
-        model_dir.mkdir(exist_ok=True)
-        folder_name = run_name if run_name else "trained_model"
-        model_path = model_dir / folder_name
-        
-        # Use the BaseHookedModel's save method for consistency
-        training_model.save_pretrained(str(model_path))
-        print(f"Full model saved to: {model_path.absolute()}")
+        # Save the full trained model to wandb
+        save_full_model_to_wandb(training_model, cfg, run_name)
     
     # Finish wandb run
     wandb.finish()
