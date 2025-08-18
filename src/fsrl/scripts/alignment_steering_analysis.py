@@ -49,6 +49,9 @@ CONFIG = {
         "sample_size": None,
         "dataset_num_proc": 20,
         "chat_template": "{{ bos_token }}{% if messages[0]['role'] == 'system' %}{% set system_message = messages[0]['content'] | trim + '\n\n' %}{% set messages = messages[1:] %}{% else %}{% set system_message = '' %}{% endif %}{% for message in messages %}{% if loop.index0 == 0 %}{% set content = system_message + message['content'] %}{% else %}{% set content = message['content'] %}{% endif %}{% if (message['role'] == 'assistant') %}{% set role = 'model' %}{% else %}{% set role = message['role'] %}{% endif %}{{ '<start_of_turn>' + role + '\n' + content | trim + '<end_of_turn>\n' }}{% endfor %}{% if add_generation_prompt %}{{'<start_of_turn>model\n'}}{% endif %}"
+    },
+    "analysis": {
+        "append_response": None,  # Options: None, "chosen", "rejected". Default None (prompt only)
     }
 }
 
@@ -110,12 +113,30 @@ def load_eval_dataset(tokenizer, sample_size: Optional[int] = None):
     # Get original column names to remove after processing
     column_names = list(eval_dataset.features)
     
-    # Apply chat template - use simpo_generation to get prompts for generation
+    # Determine task based on append_response configuration
+    append_response = CONFIG["analysis"]["append_response"]
+    
+    if append_response is None:
+        # Default: prompt only (for generation)
+        task = "simpo_generation"
+        print("Using prompt-only text (simpo_generation task)")
+    elif append_response == "chosen":
+        # Append chosen response to prompt (as in training)
+        task = "simpo"  # This provides prompt + chosen and prompt + rejected
+        print("Appending chosen response to prompt (matching training behavior)")
+    elif append_response == "rejected":
+        # Append rejected response to prompt  
+        task = "simpo"  # This provides prompt + chosen and prompt + rejected
+        print("Appending rejected response to prompt")
+    else:
+        raise ValueError(f"Invalid append_response option: {append_response}. Must be None, 'chosen', or 'rejected'")
+    
+    # Apply chat template
     eval_dataset = eval_dataset.map(
         apply_chat_template,
         fn_kwargs={
             "tokenizer": tokenizer,
-            "task": "simpo_generation",  # This extracts prompts and adds generation prompt
+            "task": task,
             "chat_template": CONFIG["dataset"]["chat_template"],
         },
         num_proc=CONFIG["dataset"]["dataset_num_proc"],
@@ -220,11 +241,27 @@ def analyze_steering_features(
                 'batch_size': len(batch_indices)
             })
             
-            # Prepare batch of prompts
+            # Prepare batch of prompts based on configuration
             batch_prompts = []
+            append_response = CONFIG["analysis"]["append_response"]
+            
             for idx in batch_indices:
                 sample = eval_dataset[int(idx)]
-                batch_prompts.append(sample["text_prompt"])
+                
+                if append_response is None:
+                    # Use prompt only (default)
+                    text = sample["text_prompt"]
+                elif append_response == "chosen":
+                    # Use prompt + chosen response (as in training)
+                    text = sample["text_chosen"]
+                elif append_response == "rejected":
+                    # Use prompt + rejected response
+                    text = sample["text_rejected"]
+                else:
+                    # Fallback to prompt only
+                    text = sample["text_prompt"]
+                    
+                batch_prompts.append(text)
             
             # Tokenize the batch
             batch_tokens = model.model.tokenizer(
@@ -299,6 +336,10 @@ def analyze_steering_features(
     l0_std = float(np.std(l0_norms_array)) if len(l0_norms_array) > 0 else 0.0
     
     results = {
+        "configuration": {
+            "append_response": CONFIG["analysis"]["append_response"],
+            "description": "prompt-only" if CONFIG["analysis"]["append_response"] is None else f"prompt + {CONFIG['analysis']['append_response']} response"
+        },
         "total_steered_features": len(unique_steered),
         "alignment_related_steered": len(unique_alignment_steered),
         "not_alignment_related_steered": len(unique_not_alignment_steered),
@@ -332,8 +373,13 @@ def main():
                         help="Batch size for processing samples (default: 2)")
     parser.add_argument("--output_file", type=str, default="outputs/alignment_steering_analysis.json",
                         help="Path to save analysis results")
+    parser.add_argument("--append_response", type=str, choices=[None, "chosen", "rejected"], default=None,
+                        help="Append response to prompt: None (prompt only, default), 'chosen' (prompt+chosen), 'rejected' (prompt+rejected)")
     
     args = parser.parse_args()
+    
+    # Update configuration with command-line argument
+    CONFIG["analysis"]["append_response"] = args.append_response
     
     # Create output directory
     Path(args.output_file).parent.mkdir(parents=True, exist_ok=True)
@@ -366,6 +412,14 @@ def main():
     print("\n" + "="*60)
     print("ALIGNMENT STEERING ANALYSIS RESULTS")
     print("="*60)
+    print(f"Configuration: append_response = {CONFIG['analysis']['append_response']}")
+    if CONFIG['analysis']['append_response'] is None:
+        print("  (Using prompt-only text)")
+    elif CONFIG['analysis']['append_response'] == "chosen":
+        print("  (Using prompt + chosen response, matching training)")
+    elif CONFIG['analysis']['append_response'] == "rejected":
+        print("  (Using prompt + rejected response)")
+    print()
     print(f"Total features steered: {results['total_steered_features']}")
     print(f"Alignment-related features steered: {results['alignment_related_steered']}")
     print(f"Not alignment-related features steered: {results['not_alignment_related_steered']}")
