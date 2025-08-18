@@ -238,40 +238,39 @@ def analyze_steering_features(
             _, llm_cache = model.run_with_cache(batch_tokens["input_ids"], prepend_bos=True)
             
             # Get the steering vector from the hook_sae_adapter key
-            if "hook_sae_adapter" in llm_cache:
-                steering_vector = llm_cache["hook_sae_adapter"]
+            steering_vector = llm_cache["blocks.12.hook_resid_post.hook_sae_adapter"]
+            
+            # Convert to numpy if it's a tensor
+            if isinstance(steering_vector, torch.Tensor):
+                steering_vector = steering_vector.float().cpu().numpy()
+            
+            # Handle batch and sequence dimensions
+            # steering_vector shape: [batch_size, seq_len, num_features]
+            # Take mean across sequence length for each sample in batch
+            if steering_vector.ndim == 3:  # [batch, seq, features]
+                steering_vector = np.mean(steering_vector, axis=1)  # [batch, features]
+            elif steering_vector.ndim > 3:
+                # Handle any additional dimensions
+                axes_to_mean = tuple(range(1, steering_vector.ndim - 1))
+                steering_vector = np.mean(steering_vector, axis=axes_to_mean)
+            
+            # Process each sample in the batch
+            for batch_idx in range(steering_vector.shape[0]):
+                sample_steering = steering_vector[batch_idx]  # [features]
                 
-                # Convert to numpy if it's a tensor
-                if isinstance(steering_vector, torch.Tensor):
-                    steering_vector = steering_vector.cpu().numpy()
+                # Find features that are being steered (non-zero values)
+                steered_indices = np.where(np.abs(sample_steering) > 1e-6)[0]
                 
-                # Handle batch and sequence dimensions
-                # steering_vector shape: [batch_size, seq_len, num_features]
-                # Take mean across sequence length for each sample in batch
-                if steering_vector.ndim == 3:  # [batch, seq, features]
-                    steering_vector = np.mean(steering_vector, axis=1)  # [batch, features]
-                elif steering_vector.ndim > 3:
-                    # Handle any additional dimensions
-                    axes_to_mean = tuple(range(1, steering_vector.ndim - 1))
-                    steering_vector = np.mean(steering_vector, axis=axes_to_mean)
+                all_steered_features.extend(steered_indices.tolist())
                 
-                # Process each sample in the batch
-                for batch_idx in range(steering_vector.shape[0]):
-                    sample_steering = steering_vector[batch_idx]  # [features]
-                    
-                    # Find features that are being steered (non-zero values)
-                    steered_indices = np.where(np.abs(sample_steering) > 1e-6)[0]
-                    
-                    all_steered_features.extend(steered_indices.tolist())
-                    
-                    # Classify steered features
-                    for feature_idx in steered_indices:
-                        if feature_idx in feature_classifications:
-                            classification = feature_classifications[feature_idx]
-                            if classification == "alignment-related":
-                                alignment_related_steered.append(feature_idx)
-                            elif classification == "not-alignment-related":
-                                not_alignment_related_steered.append(feature_idx)
+                # Classify steered features
+                for feature_idx in steered_indices:
+                    if feature_idx in feature_classifications:
+                        classification = feature_classifications[feature_idx]
+                        if classification == "alignment-related":
+                            alignment_related_steered.append(feature_idx)
+                        elif classification == "not-alignment-related":
+                            not_alignment_related_steered.append(feature_idx)
     
     # Calculate statistics
     unique_steered = list(set(all_steered_features))
