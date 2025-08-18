@@ -43,3 +43,7 @@ training:
   # SimPO parameters to match gemma2_2B.yaml
   beta: 10
   gamma_beta_ratio: 0.5
+
+hydra:
+  run:
+    dir: logs/hydra_runs/${now:%Y-%m-%d_%H-%M-%S}
