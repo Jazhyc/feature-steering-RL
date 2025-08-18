@@ -11,7 +11,7 @@ This script:
 5. Computes metrics to determine if steering is better than random
 
 Usage:
-    python src/fsrl/scripts/alignment_steering_analysis.py --classification_file path/to/classifications.json
+    python src/fsrl/scripts/alignment_steering_analysis.py
     python src/fsrl/scripts/alignment_steering_analysis.py --adapter_path models/custom/path --classification_file path/to/classifications.json
 """
 
@@ -54,6 +54,9 @@ CONFIG = {
 
 # Default adapter path
 DEFAULT_ADAPTER_PATH = "models/Gemma2-2B-clean/mild-glade-10"
+
+# Default classification file path
+DEFAULT_CLASSIFICATION_FILE = "models/NeuronpediaCache/gemma-2-2b/12-gemmascope-res-65k__l0-21_classified_deepseek-v3-0324.json"
 
 dtype_map = {
     "float32": torch.float32,
@@ -306,8 +309,8 @@ def main():
     parser = argparse.ArgumentParser(description="Analyze alignment-related steering in SAE adapter")
     parser.add_argument("--adapter_path", type=str, default=DEFAULT_ADAPTER_PATH,
                         help=f"Path to the trained SAE adapter (default: {DEFAULT_ADAPTER_PATH})")
-    parser.add_argument("--classification_file", type=str, required=True,
-                        help="Path to feature classification JSON file")
+    parser.add_argument("--classification_file", type=str, default=DEFAULT_CLASSIFICATION_FILE,
+                        help=f"Path to feature classification JSON file (default: {DEFAULT_CLASSIFICATION_FILE})")
     parser.add_argument("--sample_size", type=int, default=None,
                         help="Limit dataset size (for testing)")
     parser.add_argument("--num_analysis_samples", type=int, default=None,
