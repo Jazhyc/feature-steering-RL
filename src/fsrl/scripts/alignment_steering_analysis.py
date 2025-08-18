@@ -226,7 +226,7 @@ def analyze_steering_features(
                 batch_prompts.append(sample["text_prompt"])
             
             # Tokenize the batch
-            batch_tokens = model.base_model.tokenizer(
+            batch_tokens = model.model.tokenizer(
                 batch_prompts, 
                 return_tensors="pt", 
                 truncation=True, 
