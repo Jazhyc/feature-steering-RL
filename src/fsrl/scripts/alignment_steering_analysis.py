@@ -218,6 +218,10 @@ def analyze_steering_features(
     not_alignment_related_steered = []
     l0_norms = []  # Track L0 norms for each sample
     
+    # Track position-level statistics for proper averaging
+    position_alignment_ratios = []  # Ratio of alignment features per position
+    position_total_steered = []     # Total steered features per position
+    
     model.eval()
     with torch.no_grad():
         # Process samples in batches with progress bar
@@ -293,23 +297,38 @@ def analyze_steering_features(
                 l0_norm = np.mean(l0_per_position)  # scalar - mean across sequence positions
                 l0_norms.append(l0_norm)
                 
-                # For feature analysis, we need to identify which features are steered
-                # Take mean across sequence length for feature identification only
-                mean_sample_steering = np.mean(sample_steering, axis=0)  # [features]
-                steered_indices = np.where(np.abs(mean_sample_steering) > 1e-6)[0]
-                
-                all_steered_features.extend(steered_indices.tolist())
-                
-                # Classify steered features
-                for feature_idx in steered_indices:
-                    if feature_idx in feature_classifications:
-                        classification = feature_classifications[feature_idx]
-                        if classification == "alignment-related":
-                            alignment_related_steered.append(feature_idx)
-                        elif classification == "not-alignment-related":
-                            not_alignment_related_steered.append(feature_idx)
+                # Analyze steering at each sequence position
+                for pos_idx in range(sample_steering.shape[0]):  # Iterate over sequence positions
+                    position_steering = sample_steering[pos_idx]  # [features] for this position
+                    
+                    # Find features that are steered at this position
+                    steered_indices = np.where(np.abs(position_steering) > 1e-6)[0]
+                    
+                    if len(steered_indices) > 0:  # Only analyze positions where steering occurs
+                        # Count alignment vs non-alignment features at this position
+                        alignment_count = 0
+                        not_alignment_count = 0
+                        
+                        for feature_idx in steered_indices:
+                            all_steered_features.append(feature_idx)  # Track all steered features
+                            
+                            if feature_idx in feature_classifications:
+                                classification = feature_classifications[feature_idx]
+                                if classification == "alignment-related":
+                                    alignment_related_steered.append(feature_idx)
+                                    alignment_count += 1
+                                elif classification == "not-alignment-related":
+                                    not_alignment_related_steered.append(feature_idx)
+                                    not_alignment_count += 1
+                        
+                        # Record position-level statistics
+                        total_classified_at_position = alignment_count + not_alignment_count
+                        if total_classified_at_position > 0:
+                            position_ratio = alignment_count / total_classified_at_position
+                            position_alignment_ratios.append(position_ratio)
+                            position_total_steered.append(total_classified_at_position)
     
-    # Calculate statistics
+    # Calculate statistics using position-level analysis
     unique_steered = list(set(all_steered_features))
     unique_alignment_steered = list(set(alignment_related_steered))
     unique_not_alignment_steered = list(set(not_alignment_related_steered))
@@ -320,15 +339,23 @@ def analyze_steering_features(
     total_not_alignment = sum(1 for c in all_classifications if c == "not-alignment-related")
     baseline_alignment_rate = total_alignment / len(all_classifications) if all_classifications else 0
     
-    # Calculate steering statistics
-    total_classified_steered = len(unique_alignment_steered) + len(unique_not_alignment_steered)
-    steering_alignment_rate = len(unique_alignment_steered) / total_classified_steered if total_classified_steered > 0 else 0
+    # Calculate steering statistics from position-level analysis
+    if len(position_alignment_ratios) > 0:
+        # Average alignment rate across all positions where steering occurs
+        steering_alignment_rate = float(np.mean(position_alignment_ratios))
+        total_positions_analyzed = len(position_alignment_ratios)
+        mean_steered_per_position = float(np.mean(position_total_steered))
+    else:
+        steering_alignment_rate = 0.0
+        total_positions_analyzed = 0
+        mean_steered_per_position = 0.0
     
     # Calculate L0 norm statistics
     l0_norms_array = np.array(l0_norms)
     l0_mean = float(np.mean(l0_norms_array)) if len(l0_norms_array) > 0 else 0.0
     l0_variance = float(np.var(l0_norms_array)) if len(l0_norms_array) > 0 else 0.0
     l0_std = float(np.std(l0_norms_array)) if len(l0_norms_array) > 0 else 0.0
+    l0_stderr = float(l0_std / np.sqrt(len(l0_norms_array))) if len(l0_norms_array) > 0 else 0.0
     
     results = {
         "configuration": {
@@ -338,14 +365,17 @@ def analyze_steering_features(
         "total_steered_features": len(unique_steered),
         "alignment_related_steered": len(unique_alignment_steered),
         "not_alignment_related_steered": len(unique_not_alignment_steered),
-        "total_classified_steered": total_classified_steered,
+        "total_positions_analyzed": total_positions_analyzed,
+        "mean_steered_per_position": mean_steered_per_position,
         "baseline_alignment_rate": float(baseline_alignment_rate),
         "steering_alignment_rate": float(steering_alignment_rate),
         "improvement_over_baseline": float(steering_alignment_rate - baseline_alignment_rate),
         "l0_norm_mean": l0_mean,
         "l0_norm_variance": l0_variance,
         "l0_norm_std": l0_std,
-        "l0_norms_per_sample": [int(x) for x in l0_norms],
+        "l0_norm_stderr": l0_stderr,
+        "l0_norms_per_sample": [float(x) for x in l0_norms],
+        "position_alignment_ratios": [float(x) for x in position_alignment_ratios],
         "steered_feature_indices": [int(x) for x in unique_steered],
         "alignment_steered_indices": [int(x) for x in unique_alignment_steered],
         "not_alignment_steered_indices": [int(x) for x in unique_not_alignment_steered],
@@ -415,18 +445,20 @@ def main():
     elif CONFIG['analysis']['append_response'] == "rejected":
         print("  (Using prompt + rejected response)")
     print()
-    print(f"Total features steered: {results['total_steered_features']}")
-    print(f"Alignment-related features steered: {results['alignment_related_steered']}")
-    print(f"Not alignment-related features steered: {results['not_alignment_related_steered']}")
-    print(f"Total classified features steered: {results['total_classified_steered']}")
+    print(f"Total unique features steered: {results['total_steered_features']}")
+    print(f"Unique alignment-related features steered: {results['alignment_related_steered']}")
+    print(f"Unique not alignment-related features steered: {results['not_alignment_related_steered']}")
+    print(f"Total positions analyzed: {results['total_positions_analyzed']}")
+    print(f"Mean features steered per position: {results['mean_steered_per_position']:.2f}")
     print()
     print(f"Baseline alignment rate (all features): {results['baseline_alignment_rate']:.3f}")
-    print(f"Steering alignment rate: {results['steering_alignment_rate']:.3f}")
+    print(f"Position-averaged steering alignment rate: {results['steering_alignment_rate']:.3f}")
     print(f"Improvement over baseline: {results['improvement_over_baseline']:.3f}")
     print()
     print("L0 Norm Statistics (sparsity):")
     print(f"L0 norm mean: {results['l0_norm_mean']:.2f}")
     print(f"L0 norm std: {results['l0_norm_std']:.2f}")
+    print(f"L0 norm stderr: {results['l0_norm_stderr']:.2f}")
     print(f"L0 norm variance: {results['l0_norm_variance']:.2f}")
     print()
     
