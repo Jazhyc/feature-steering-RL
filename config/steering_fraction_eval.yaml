@@ -36,8 +36,8 @@ architecture:
     dataset_num_proc: 20
 
 training:
-  per_device_train_batch_size: 1
-  per_device_eval_batch_size: 1
+  per_device_train_batch_size: 2
+  per_device_eval_batch_size: 4
   gradient_accumulation_steps: 1
   eval_steps: 100
   # SimPO parameters to match gemma2_2B.yaml
