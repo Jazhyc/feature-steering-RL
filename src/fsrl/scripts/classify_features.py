@@ -1,15 +1,16 @@
 import argparse
+import asyncio
 import json
+import os
 from pathlib import Path
 
-from tqdm import tqdm
-from vllm import LLM, SamplingParams
-from vllm.sampling_params import GuidedDecodingParams
+from dotenv import load_dotenv
+from openai import AsyncOpenAI, APIError
+from tqdm.asyncio import tqdm
 
 # --- Prompt Engineering ---
 
-# The system prompt is updated to broaden the definition of "alignment-related"
-# and instructs the model to provide a direct classification, not JSON.
+# CHANGED: The prompt is now more direct in its final instruction to prevent preambles.
 SYSTEM_PROMPT = """
 You are an expert AI alignment researcher. Your task is to classify explanations of features from a neural network into one of two categories: 'alignment-related' or 'not-alignment-related'.
 
@@ -32,17 +33,19 @@ You are an expert AI alignment researcher. Your task is to classify explanations
     - Simple linguistic patterns (e.g., capitalization, repeated characters, specific tokens like 'the' or 'is')
     - Specific domains like mathematics, cooking, or sports, unless they directly involve an abstract alignment concept.
 
-Your response must be *exactly* one of the two categories: `alignment-related` or `not-alignment-related`.
+Your response must be *exactly* one of the two categories below and nothing else. Do not add any conversational text or preamble.
+- `alignment-related`
+- `not-alignment-related`
+
+/no_think
 """
 
-# The user prompt template remains the same.
 USER_PROMPT_TEMPLATE = """
 Please classify the following feature explanation:
 
 Explanation: "{explanation}"
 """
 
-# Define the choices for guided decoding
 CLASSIFICATION_CHOICES = ["alignment-related", "not-alignment-related"]
 
 
@@ -63,107 +66,102 @@ def save_results(results: list[dict], output_path: Path):
     print(f"\nClassification results saved to {output_path}")
 
 
-def main(args):
-    """Main function to run the classification pipeline."""
-    input_path = Path(args.input_file)
-    output_path = Path(args.output_file)
-
-    # 1. Load the feature explanations from the source file.
-    features = load_features(input_path)
-    if not features:
-        print("No features found in the input file. Exiting.")
-        return
-
-    # 2. Initialize the VLLM engine with the specified INT4 AWQ quantized model.
-    print(f"Initializing VLLM with model: {args.model}...")
-    try:
-        llm = LLM(
-            model=args.model,
-            tensor_parallel_size=args.tensor_parallel_size,
-            max_model_len=args.max_model_len,
-        )
-    except Exception as e:
-        print(f"Error initializing VLLM: {e}")
-        print("Please ensure the model name is correct, it's an AWQ model, and you have enough VRAM.")
-        return
-
-    # 3. Configure tokenizer and sampling parameters with guided decoding.
-    tokenizer = llm.get_tokenizer()
-    
-    # Disable "thinking_mode" for Qwen models to prevent extra tokens.
-    try:
-        tokenizer.thinking_mode = False
-        print("Successfully disabled 'thinking_mode' on the tokenizer.")
-    except AttributeError:
-        print("Tokenizer does not have 'thinking_mode' attribute. Skipping.")
-
-    # Use GuidedDecodingParams to constrain the output to our choices.
-    guided_params = GuidedDecodingParams(choice=CLASSIFICATION_CHOICES)
-    sampling_params = SamplingParams(
-        guided_decoding=guided_params,
-        max_tokens=20, # A few tokens is enough for the choice
-    )
-
-    # 4. Prepare all prompts for batch processing.
-    prompts = []
-    for feature in tqdm(features, desc="Preparing prompts"):
+async def classify_feature_async(feature: dict, client: AsyncOpenAI, model: str, semaphore: asyncio.Semaphore) -> dict:
+    """Asynchronously classifies a single feature using the Lambda API."""
+    async with semaphore:
         description = feature.get("description", "")
+        feature_id = f"{feature.get('modelId')}-{feature.get('layer')}-{feature.get('index')}"
+
         if not description:
-            prompts.append(None)
-            continue
+            return {
+                "feature_id": feature_id,
+                "description": description,
+                "classification": "no-description",
+            }
 
         user_message = USER_PROMPT_TEMPLATE.format(explanation=description)
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_message},
         ]
-        
-        try:
-            prompt_str = tokenizer.apply_chat_template(
-                messages, tokenize=False, add_generation_prompt=True
-            )
-            prompts.append(prompt_str)
-        except Exception as e:
-            print(f"Warning: Failed to apply chat template for a feature. Skipping. Error: {e}")
-            prompts.append(None)
 
-    valid_prompts_with_features = [
-        (prompt, feature) for prompt, feature in zip(prompts, features) if prompt is not None
-    ]
-    if not valid_prompts_with_features:
-        print("No valid prompts could be created. Exiting.")
+        try:
+            chat_completion = await client.chat.completions.create(
+                messages=messages,
+                model=model,
+                # CHANGED: Increased max_tokens to give the model enough room to respond.
+                max_tokens=20,
+                extra_body={"guided_choice": CLASSIFICATION_CHOICES},
+            )
+            
+            # CHANGED: Added a check for None content before stripping.
+            completion_content = chat_completion.choices[0].message.content
+            if completion_content:
+                label = completion_content.strip()
+            else:
+                # This handles the exact error you saw.
+                print(f"\nAPI returned no content for feature {feature_id}. Finish reason: {chat_completion.choices[0].finish_reason}")
+                label = "api-no-content"
+
+
+        except APIError as e:
+            print(f"\nAPI Error for feature {feature_id}: {e}")
+            label = "api-error"
+        except Exception as e:
+            print(f"\nAn unexpected error occurred for feature {feature_id}: {e}")
+            label = "unexpected-error"
+
+        return {
+            "feature_id": feature_id,
+            "description": description,
+            "classification": label,
+        }
+
+
+async def main(args):
+    """Main async function to run the classification pipeline."""
+    load_dotenv()
+    
+    input_path = Path(args.input_file)
+    # Derive output path if not provided: <input_stem>_classified_<model>.json in same directory
+    if args.output_file:
+        output_path = Path(args.output_file)
+    else:
+        # sanitize model for filesystem
+        safe_model = "".join(ch if ch.isalnum() or ch in "-_." else "-" for ch in args.model)
+        output_path = input_path.with_name(f"{input_path.stem}_classified_{safe_model}.json")
+
+    api_key = args.api_key or os.environ.get("LAMBDA_API_KEY")
+    if not api_key:
+        raise ValueError("API key not found. Please provide it via --api-key or a LAMBDA_API_KEY in your .env file.")
+
+    client = AsyncOpenAI(
+        api_key=api_key,
+        base_url="https://api.lambda.ai/v1",
+    )
+
+    features = load_features(input_path)
+    if not features:
+        print("No features found in the input file. Exiting.")
         return
 
-    valid_prompts, original_features = zip(*valid_prompts_with_features)
+    semaphore = asyncio.Semaphore(args.concurrency)
+    
+    tasks = [
+        classify_feature_async(feature, client, args.model, semaphore)
+        for feature in features
+    ]
 
-    # 5. Run inference on the batch of prompts.
-    print(f"\nGenerating classifications for {len(valid_prompts)} features...")
-    outputs = llm.generate(list(valid_prompts), sampling_params, use_tqdm=True)
+    print(f"Sending {len(tasks)} classification requests with a concurrency limit of {args.concurrency}...")
+    
+    results = await tqdm.gather(*tasks, desc="Classifying features")
 
-    # 6. Process the outputs. No JSON parsing needed!
-    results = []
-    for feature, output in zip(original_features, outputs):
-        label = output.outputs[0].text.strip()
-
-        # Safety check, though guided decoding should make this unnecessary.
-        if label not in CLASSIFICATION_CHOICES:
-            print(f"\nWarning: Model produced an invalid classification: '{label}'")
-            label = "invalid-output"
-
-        feature_id = f"{feature.get('modelId')}-{feature.get('layer')}-{feature.get('index')}"
-        
-        results.append({
-            "feature_id": feature_id,
-            "description": feature.get("description"),
-            "classification": label,
-        })
-
-    # 7. Save the final results to a new file.
     save_results(results, output_path)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Classify SAE feature explanations with guided decoding using VLLM."
+        description="Classify SAE feature explanations concurrently using the Lambda Inference API."
     )
     parser.add_argument(
         "--input-file",
@@ -174,27 +172,31 @@ if __name__ == "__main__":
     parser.add_argument(
         "--output-file",
         type=str,
-        default="models/NeuronpediaCache/gemma-2-2b/12-gemmascope-res-65k__l0-21_classified_guided.json",
-        help="Path to save the output JSON file with classifications.",
+        default=None,
+        help=(
+            "Path to save the output JSON file with classifications. "
+            "If not provided, saves next to the input file as <input_stem>_classified_<model>.json."
+        ),
     )
     parser.add_argument(
         "--model",
         type=str,
-        default="RedHatAI/Qwen3-32B-quantized.w4a16",
-        help="Hugging Face model ID to use with VLLM (INT4 AWQ quantized models are required).",
+        # CHANGED: Defaulting to the model you are using.
+        default="deepseek-v3-0324",
+        help="Model ID available on Lambda Inference.",
     )
     parser.add_argument(
-        "--tensor-parallel-size",
-        type=int,
-        default=1,
-        help="Number of GPUs to use for tensor parallelism.",
+        "--api-key",
+        type=str,
+        default=None,
+        help="Your Lambda Inference API key (overrides .env file).",
     )
     parser.add_argument(
-        "--max-model-len",
+        "--concurrency",
         type=int,
-        default=1024,
-        help="Maximum context length for the model.",
+        default=50,
+        help="Number of concurrent API requests to make. Adjust based on your API rate limits.",
     )
     
     args = parser.parse_args()
-    main(args)
+    asyncio.run(main(args))

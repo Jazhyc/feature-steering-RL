@@ -205,7 +205,12 @@ cython_debug/
 # Maybe this is too broad?
 *.json
 !deepspeed.json
+*.csv
 
 # Logs
 logs/*
 !logs/.gitkeep
+
+# Outputs
+outputs/*
+!outputs/.gitkeep
