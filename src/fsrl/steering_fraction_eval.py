@@ -171,9 +171,18 @@ def main(cfg: DictConfig) -> None:
         name=cfg.wandb.get("name", None),
     )
 
-    # Build fractions from intervals (e.g., 10 -> [0.1, 0.2, ..., 1.0])
-    step = cfg.get("interval_percent", 10)
-    fractions = [i / 100.0 for i in range(step, 101, step)]
+    # Build geometric fraction schedule: start at 0.01 and multiply by 5 until 0.1
+    start_frac = cfg.get("fraction_start", 0.001)
+    mult = cfg.get("fraction_multiplier", 5.0)
+    max_frac = cfg.get("fraction_max", 0.1)
+    fractions = []
+    f = float(start_frac)
+    while f <= float(max_frac) + 1e-12:  # small epsilon to include boundary
+        fractions.append(f)
+        f *= float(mult)
+    # Ensure max fraction is included if we overshot without hitting it exactly
+    if fractions and (fractions[-1] < float(max_frac) - 1e-12):
+        fractions.append(float(max_frac))
 
     results = sweep_and_log(trainer, model, fractions)
 
