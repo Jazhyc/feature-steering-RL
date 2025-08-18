@@ -292,12 +292,12 @@ def analyze_steering_features(
         "alignment_related_steered": len(unique_alignment_steered),
         "not_alignment_related_steered": len(unique_not_alignment_steered),
         "total_classified_steered": total_classified_steered,
-        "baseline_alignment_rate": baseline_alignment_rate,
-        "steering_alignment_rate": steering_alignment_rate,
-        "improvement_over_baseline": steering_alignment_rate - baseline_alignment_rate,
-        "steered_feature_indices": unique_steered,
-        "alignment_steered_indices": unique_alignment_steered,
-        "not_alignment_steered_indices": unique_not_alignment_steered,
+        "baseline_alignment_rate": float(baseline_alignment_rate),
+        "steering_alignment_rate": float(steering_alignment_rate),
+        "improvement_over_baseline": float(steering_alignment_rate - baseline_alignment_rate),
+        "steered_feature_indices": [int(x) for x in unique_steered],
+        "alignment_steered_indices": [int(x) for x in unique_alignment_steered],
+        "not_alignment_steered_indices": [int(x) for x in unique_not_alignment_steered],
     }
     
     return results
