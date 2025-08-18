@@ -304,3 +304,8 @@ class HookedModel(BaseHookedModel):
     def get_norms(self) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Helper to get the adapter's norm values."""
         return self.sae_adapter.get_norms()
+
+    # --- Steering control passthrough ---
+    def set_steering_fraction(self, fraction: float) -> None:
+        """Set the fraction of features used by the adapter's steering vector."""
+        self.sae_adapter.set_steering_fraction(fraction)

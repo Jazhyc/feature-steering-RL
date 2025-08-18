@@ -66,13 +66,17 @@ class SAEAdapter(SAE):
         self.register_buffer('_norm_l0', torch.tensor(0.0))
         self.register_buffer('_norm_l1', torch.tensor(0.0))
         self.register_buffer('_norm_l2', torch.tensor(0.0))
-        
+
         # Create hook points for the adapter to cache activations or for interventions
         self.hook_sae_adapter = HookPoint()
         self.hook_sae_fusion = HookPoint()
-        
+
         # Add hooks to the hook manager
         self.setup()
+
+        # Steering sparsity control (fraction of features used in steering)
+        # 1.0 means use all features; 0.1 means keep top 10% by |value| per item
+        self.steering_fraction = 1.0
         
     @property
     def adapter_threshold(self) -> torch.Tensor:
@@ -140,8 +144,21 @@ class SAEAdapter(SAE):
             # For regular ReLU, L0 norm is calculated from non-zero steered activations
             sparsity_mask = (steered_activations > 0).float()
             
+        # Optionally restrict to top-k features by absolute value (per item)
+        if 0.0 < getattr(self, "steering_fraction", 1.0) < 1.0:
+            d = steered_activations.shape[-1]
+            k = max(1, int(d * float(self.steering_fraction)))
+            # Compute top-k indices by absolute value
+            with torch.no_grad():
+                topk = torch.topk(steered_activations.abs(), k=k, dim=-1, largest=True, sorted=False)
+                mask = torch.zeros_like(steered_activations, dtype=steered_activations.dtype)
+                mask.scatter_(-1, topk.indices, 1.0)
+            steered_activations = steered_activations * mask
+            sparsity_mask = mask
+
+        # L0 is count of non-zero active features after any masking
         self._norm_l0 = torch.sum(sparsity_mask, dim=-1).mean()
-        
+
         steered_activations = self.hook_sae_adapter(steered_activations)
 
         # Statistics for loss and logging
@@ -228,6 +245,13 @@ class SAEAdapter(SAE):
     def get_norms(self) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Returns the current L0, L1, and L2 norms."""
         return self._norm_l0, self._norm_l1, self._norm_l2
+
+    # --- Steering control API ---
+    def set_steering_fraction(self, fraction: float) -> None:
+        """Set fraction of features to keep in the steering vector (0-1]."""
+        if not (0.0 < fraction <= 1.0):
+            raise ValueError("steering_fraction must be in (0, 1].")
+        self.steering_fraction = float(fraction)
     
     def save_adapter(self, path: str | Path):
         """Saves only the trainable adapter weights and its configuration."""
