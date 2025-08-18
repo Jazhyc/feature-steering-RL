@@ -184,11 +184,8 @@ def load_feature_classifications(classification_file: str) -> Dict[int, str]:
             if isinstance(fid, str):
                 m = re.search(r'-(\d+)$', fid)
                 if m:
-                    try:
-                        feature_idx = int(m.group(1))
-                    except:
-                        pass
-        
+                    feature_idx = int(m.group(1))
+
         # Get classification
         classification = record.get('classification')
         if feature_idx is not None and classification is not None:
@@ -284,24 +281,22 @@ def analyze_steering_features(
             
             # Handle batch and sequence dimensions
             # steering_vector shape: [batch_size, seq_len, num_features]
-            # Take mean across sequence length for each sample in batch
-            if steering_vector.ndim == 3:  # [batch, seq, features]
-                steering_vector = np.mean(steering_vector, axis=1)  # [batch, features]
-            elif steering_vector.ndim > 3:
-                # Handle any additional dimensions
-                axes_to_mean = tuple(range(1, steering_vector.ndim - 1))
-                steering_vector = np.mean(steering_vector, axis=axes_to_mean)
+            # Follow training pattern: calculate L0 per sequence position, then average
             
             # Process each sample in the batch
             for batch_idx in range(steering_vector.shape[0]):
-                sample_steering = steering_vector[batch_idx]  # [features]
+                sample_steering = steering_vector[batch_idx]  # [seq_len, features]
                 
-                # Calculate L0 norm (number of non-zero elements)
-                l0_norm = np.count_nonzero(np.abs(sample_steering) > 1e-6)
+                # Calculate L0 norm per sequence position, then take mean (following training pattern)
+                # This matches: torch.sum(sparsity_mask, dim=-1).mean() from get_steering_vector()
+                l0_per_position = np.count_nonzero(np.abs(sample_steering) > 1e-6, axis=1)  # [seq_len]
+                l0_norm = np.mean(l0_per_position)  # scalar - mean across sequence positions
                 l0_norms.append(l0_norm)
                 
-                # Find features that are being steered (non-zero values)
-                steered_indices = np.where(np.abs(sample_steering) > 1e-6)[0]
+                # For feature analysis, we need to identify which features are steered
+                # Take mean across sequence length for feature identification only
+                mean_sample_steering = np.mean(sample_steering, axis=0)  # [features]
+                steered_indices = np.where(np.abs(mean_sample_steering) > 1e-6)[0]
                 
                 all_steered_features.extend(steered_indices.tolist())
                 
