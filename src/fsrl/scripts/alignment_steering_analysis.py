@@ -53,7 +53,7 @@ CONFIG = {
 }
 
 # Default adapter path
-DEFAULT_ADAPTER_PATH = "models/Gemma2-2B-clean/mild-glade-10"
+DEFAULT_ADAPTER_PATH = "models/Gemma2_2B-clean/mild-glade-10/adapter"
 
 # Default classification file path
 DEFAULT_CLASSIFICATION_FILE = "models/NeuronpediaCache/gemma-2-2b/12-gemmascope-res-65k__l0-21_classified_deepseek-v3-0324.json"
@@ -121,7 +121,6 @@ def load_eval_dataset(tokenizer, sample_size: Optional[int] = None):
         num_proc=CONFIG["dataset"]["dataset_num_proc"],
         remove_columns=column_names,
         desc="Formatting prompts with chat template",
-        disable_tqdm=False,
     )
     
     return eval_dataset
