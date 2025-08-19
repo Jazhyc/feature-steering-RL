@@ -291,11 +291,7 @@ def analyze_steering_features(
 
             # 2. ALIGNMENT ANALYSIS: Use attention mask to analyze only real tokens
             attention_mask = batch_tokens["attention_mask"].cpu().numpy()  # [batch_size, seq_len]
-            
-            # The BOS token is prepended by HookedTransformer, so we need to add it to our mask
-            bos_mask = np.ones((attention_mask.shape[0], 1), dtype=attention_mask.dtype)
-            full_mask = np.concatenate([bos_mask, attention_mask], axis=1)  # [batch_size, seq_len + 1]
-            
+
             # Create classification masks for vectorized operations (outside the loop for efficiency)
             feature_indices = np.arange(steering_vector.shape[2])  # [features]
             alignment_mask = np.array([
@@ -310,7 +306,7 @@ def analyze_steering_features(
             # Process each sample in the batch for alignment analysis
             for batch_idx in range(steering_vector.shape[0]):
                 # Get the true length of the sequence including BOS
-                sample_len = int(full_mask[batch_idx].sum())
+                sample_len = int(attention_mask[batch_idx].sum())
                 if sample_len == 0:
                     continue
 
