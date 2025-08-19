@@ -118,12 +118,14 @@ def load_eval_dataset(tokenizer, sample_size: Optional[int] = None):
     column_names = list(eval_dataset.features)
     append_response = CONFIG["analysis"]["append_response"]
     
+    # Always use "simpo" task to ensure we get text_chosen and text_rejected fields
+    # even when we only need text_prompt, so the script can handle all modes
+    task = "simpo"
+    
     if append_response is None:
-        task = "simpo_generation"
-        print("Using prompt-only text (simpo_generation task)")
+        print("Using prompt-only text (simpo task, will use text_prompt field)")
     else:
-        task = "simpo"
-        print(f"Appending {append_response} response to prompt (matching training behavior)")
+        print(f"Appending {append_response} response to prompt (simpo task, will use text_{append_response} field)")
 
     eval_dataset = eval_dataset.map(
         apply_chat_template,
