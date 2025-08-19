@@ -25,6 +25,7 @@ class SteeringCollector:
     :param max_samples: max samples to process (None -> all)
     :param out_dir: directory to save outputs
     :param dtype: torch dtype for model (default bfloat16)
+    :param running_average: if True, keep only the dataset mean vector instead of all per-sample vectors
     """
 
     def __init__(
@@ -37,6 +38,7 @@ class SteeringCollector:
         max_samples: Optional[int] = 500,
         out_dir: str = "./steering_out",
         dtype=torch.bfloat16,
+        running_average: bool = True,
     ):
         self.model_name = model_name
         self.adapter_local_path = adapter_local_path
@@ -47,6 +49,7 @@ class SteeringCollector:
         self.out_dir = Path(out_dir)
         self.out_dir.mkdir(parents=True, exist_ok=True)
         self.dtype = dtype
+        self.running_average = running_average
 
         self.hooked: Optional[HookedModel] = None
         self.tokenizer = None
@@ -54,6 +57,7 @@ class SteeringCollector:
 
         # outputs
         self.steering_array: Optional[np.ndarray] = None
+        self.sae_feature_act_array: Optional[np.ndarray] = None
         self.meta: Dict[str, Any] = {}
 
     def load_model_and_adapter(self) -> None:
@@ -114,6 +118,38 @@ class SteeringCollector:
         raise KeyError(f"Could not locate SAE adapter activation key. Sample keys: {keys[:40]}")
 
     @staticmethod
+    def _find_sae_activation_key(cache: dict, target: str = "hook_sae_acts_post") -> str:
+        """
+        Heuristic search for the SAE activation key in the cache.
+        
+        By default, looks for the sparse feature activations (hook_sae_acts_post),
+        but you can set `target` to e.g. "hook_sae_input", "hook_sae_recons", etc.
+        """
+        keys = list(cache.keys())
+
+        # Exact match (common case)
+        for k in keys:
+            if isinstance(k, str) and k.endswith(target):
+                return k
+
+        # Substring search
+        for k in keys:
+            if isinstance(k, str) and "sae" in k and target in k:
+                return k
+
+        # Tuple keys: stringify and search
+        for k in keys:
+            s = str(k)
+            if target in s and "sae" in s:
+                return k
+
+        raise KeyError(
+            f"Could not locate SAE activation key for target='{target}'. "
+            f"Sample keys: {keys[:40]}"
+        )
+
+
+    @staticmethod
     def _get_text_from_example(ex: dict) -> str:
         """Extract text field from a dataset example."""
         if "prompt" in ex:
@@ -145,7 +181,9 @@ class SteeringCollector:
             print(f"Processing {num_samples} samples from {self.hf_dataset} split={self.split}")
 
         steering_list: List[np.ndarray] = []
-        meta_list: List[dict] = []
+        running_sum: Optional[np.ndarray] = None
+        sae_act_list: List[np.ndarray] = []
+        sae_act_running_sum: Optional[np.ndarray] = None
 
         for i, ex in enumerate(self.dataset):
             text = self._get_text_from_example(ex)
@@ -165,26 +203,58 @@ class SteeringCollector:
                 act = act[0]
 
             vec = self._mean_vector_from_activation_tensor(act)
-            steering_list.append(vec)
-            meta_list.append({"index": i, "text_snippet": text[:200]})
+            sae_act = cache[self._find_sae_activation_key(cache)]
+            vec2 = self._mean_vector_from_activation_tensor(sae_act)
+            # clear GPU cache
+            del cache, act, sae_act, input_ids, kwargs
+            torch.cuda.empty_cache()
+
+            if self.running_average:
+                if running_sum is None:
+                    running_sum = np.zeros_like(vec, dtype=np.float64)
+                    sae_act_running_sum = np.zeros_like(vec2, dtype=np.float64)
+                running_sum += vec
+                sae_act_running_sum += vec2
+            else:
+                steering_list.append(vec)
+                sae_act_list.append(vec2)
 
             if verbose and ((i + 1) % 50 == 0 or (i + 1) == num_samples):
                 print(f"Processed {i+1}/{num_samples}")
 
-        # stack to array
-        self.steering_array = np.stack(steering_list, axis=0)
-        self.meta = {"dataset": self.hf_dataset, "split": self.split, "n": self.steering_array.shape[0]}
+        if self.running_average:
+            self.steering_array = (running_sum / num_samples).astype(np.float32)[None, :]
+            self.sae_feature_act_array = (sae_act_running_sum / num_samples).astype(np.float32)[None, :]
+        else:
+            self.steering_array = np.stack(steering_list, axis=0)
+            self.sae_feature_act_array = np.stack(sae_act_list, axis=0)
+
+        self.meta = {
+            "dataset": self.hf_dataset,
+            "split": self.split,
+            "n": num_samples,
+            "running_average": self.running_average,
+        }
 
     def save(self, out_dir: Optional[str] = None) -> None:
-        """Save steering_vectors.npy and meta.json to out_dir (or configured out_dir)."""
+        """
+        Save steering_vectors.npy, sae_feature_acts.npy, and meta.json
+        to out_dir (or configured out_dir).
+        """
         out = Path(out_dir) if out_dir else self.out_dir
         out.mkdir(parents=True, exist_ok=True)
-        if self.steering_array is None:
+
+        if self.steering_array is None or self.sae_feature_act_array is None:
             raise RuntimeError("No results to save. Run .run() first.")
+
         np.save(out / "steering_vectors.npy", self.steering_array)
+        np.save(out / "sae_feature_acts.npy", self.sae_feature_act_array)
+
         with open(out / "meta.json", "w") as f:
             json.dump(self.meta, f, indent=2)
+
         print("Saved steering_vectors.npy ->", out / "steering_vectors.npy")
+        print("Saved sae_feature_acts.npy ->", out / "sae_feature_acts.npy")
         print("Saved meta.json ->", out / "meta.json")
 
 
@@ -195,7 +265,7 @@ if __name__ == "__main__":
         adapter_local_path="./artifacts/adapter-mild-glade-10:v0/adapter",
         hf_dataset="princeton-nlp/llama3-ultrafeedback-armorm",
         split="test",
-        max_samples=20,
+        max_samples=None,
         out_dir="./steering_out",
     )
     extractor.run(verbose=True)
