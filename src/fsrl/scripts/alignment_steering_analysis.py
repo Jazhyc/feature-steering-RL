@@ -415,7 +415,7 @@ def main():
                         help="Limit dataset size (for testing)")
     parser.add_argument("--num_analysis_samples", type=int, default=None,
                         help="Number of samples to use for steering analysis (default: use all)")
-    parser.add_argument("--batch_size", type=int, default=4,
+    parser.add_argument("--batch_size", type=int, default=2,
                         help="Batch size for processing samples (default: 4)")
     parser.add_argument("--output_file", type=str, default="outputs/alignment_steering_analysis.json",
                         help="Path to save analysis results")
