@@ -271,7 +271,7 @@ def analyze_steering_features(
             )
             
             # Use run_with_cache to capture steering vectors
-            _, llm_cache = model.run_with_cache(batch_tokens["input_ids"], prepend_bos=True)
+            _, llm_cache = model.run_with_cache(batch_tokens["input_ids"], prepend_bos=False)
             
             # Get the steering vector from the hook_sae_adapter key
             steering_vector = llm_cache["blocks.12.hook_resid_post.hook_sae_adapter"]
