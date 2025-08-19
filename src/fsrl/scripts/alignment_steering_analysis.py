@@ -195,8 +195,13 @@ def analyze_steering_features(
     not_alignment_related_steered = []
     l0_norms = []
     
+    # Track position-level statistics for proper averaging
     position_alignment_ratios = []
     position_total_steered = []
+    
+    # Initialize feature usage counter for all SAE features
+    # Get total number of features from first batch (will be consistent)
+    feature_usage_counter = None
     
     model.eval()
     with torch.no_grad():
@@ -252,6 +257,12 @@ def analyze_steering_features(
             if isinstance(steering_vector, torch.Tensor):
                 steering_vector = steering_vector.float().cpu().numpy()
             
+            # Initialize feature usage counter on first batch
+            if feature_usage_counter is None:
+                num_features = steering_vector.shape[2]
+                feature_usage_counter = np.zeros(num_features, dtype=int)
+                print(f"Tracking usage for {num_features} SAE features...")
+            
             # --- FIX 3: Replicate the trainer's naive L0 norm calculation ---
             # The trainer's metric is a simple mean over the whole tensor, including padding.
             l0_per_position_batch = np.count_nonzero(np.abs(steering_vector) > 1e-6, axis=-1)
@@ -290,6 +301,11 @@ def analyze_steering_features(
                 
                 steered_features_in_sample = np.where(np.any(sample_steered_mask, axis=0))[0]
                 all_steered_features.extend(steered_features_in_sample.tolist())
+                
+                # Update feature usage counter for this sample
+                # Count how many times each feature is used (across all positions in this sample)
+                feature_usage_in_sample = np.sum(sample_steered_mask, axis=0)  # Shape: [num_features]
+                feature_usage_counter += feature_usage_in_sample.astype(int)
                 
                 steered_alignment_features = steered_features_in_sample[alignment_mask[steered_features_in_sample]]
                 steered_not_alignment_features = steered_features_in_sample[not_alignment_mask[steered_features_in_sample]]
@@ -335,9 +351,83 @@ def analyze_steering_features(
         "l0_norm_mean": l0_mean,
         "l0_norm_std": l0_std,
         "l0_norm_stderr": l0_stderr,
+        "feature_usage_counter": feature_usage_counter.tolist() if feature_usage_counter is not None else []
     }
     
     return results
+
+
+def save_feature_usage_analysis(feature_usage_counter, feature_classifications, output_file):
+    """
+    Save detailed feature usage statistics to a separate file.
+    """
+    if feature_usage_counter is None or len(feature_usage_counter) == 0:
+        print("No feature usage data to save.")
+        return
+    
+    feature_usage_counter = np.array(feature_usage_counter)
+    
+    # Create detailed feature usage analysis
+    feature_usage_data = []
+    total_usage = np.sum(feature_usage_counter)
+    
+    for feature_idx in range(len(feature_usage_counter)):
+        usage_count = int(feature_usage_counter[feature_idx])
+        usage_percentage = float(usage_count / total_usage * 100) if total_usage > 0 else 0.0
+        
+        classification = feature_classifications.get(feature_idx, "unknown")
+        
+        feature_usage_data.append({
+            "feature_index": feature_idx,
+            "usage_count": usage_count,
+            "usage_percentage": usage_percentage,
+            "classification": classification
+        })
+    
+    # Sort by usage count (most used first)
+    feature_usage_data.sort(key=lambda x: x["usage_count"], reverse=True)
+    
+    # Calculate summary statistics
+    active_features = np.sum(feature_usage_counter > 0)
+    top_10_usage = np.sum([f["usage_count"] for f in feature_usage_data[:10]])
+    top_10_percentage = float(top_10_usage / total_usage * 100) if total_usage > 0 else 0.0
+    
+    # Count by classification
+    classification_usage = {}
+    for feature in feature_usage_data:
+        cls = feature["classification"]
+        if cls not in classification_usage:
+            classification_usage[cls] = {"count": 0, "total_usage": 0}
+        if feature["usage_count"] > 0:
+            classification_usage[cls]["count"] += 1
+        classification_usage[cls]["total_usage"] += feature["usage_count"]
+    
+    # Create summary
+    usage_summary = {
+        "total_features": len(feature_usage_counter),
+        "active_features": int(active_features),
+        "inactive_features": int(len(feature_usage_counter) - active_features),
+        "total_usage_events": int(total_usage),
+        "mean_usage_per_active_feature": float(np.mean(feature_usage_counter[feature_usage_counter > 0])) if active_features > 0 else 0.0,
+        "std_usage_per_active_feature": float(np.std(feature_usage_counter[feature_usage_counter > 0])) if active_features > 0 else 0.0,
+        "top_10_features_usage_percentage": top_10_percentage,
+        "classification_breakdown": classification_usage
+    }
+    
+    # Combine everything
+    full_usage_analysis = {
+        "summary": usage_summary,
+        "feature_usage_details": feature_usage_data
+    }
+    
+    # Save to file
+    with open(output_file, 'w') as f:
+        json.dump(full_usage_analysis, f, indent=2)
+    
+    print(f"Feature usage analysis saved to: {output_file}")
+    print(f"  - {active_features}/{len(feature_usage_counter)} features were used")
+    print(f"  - Top 10 features account for {top_10_percentage:.1f}% of all usage")
+    print(f"  - Mean usage per active feature: {usage_summary['mean_usage_per_active_feature']:.1f}")
 
 
 def main():
@@ -411,6 +501,7 @@ def main():
     print("L0 Norm Statistics (replicating trainer's metric):")
     print(f"L0 norm mean: {results['l0_norm_mean']:.2f}")
     print(f"L0 norm std: {results['l0_norm_std']:.2f}")
+    print(f"L0 norm stderr: {results['l0_norm_stderr']:.2f}")
     print()
     
     if results['improvement_over_baseline'] > 0:
@@ -420,10 +511,25 @@ def main():
     
     print("="*60)
     
+    # Save main analysis results (without detailed feature usage)
+    main_results = {k: v for k, v in results.items() if k != "feature_usage_counter"}
     with open(args.output_file, 'w') as f:
-        json.dump(results, f, indent=2, sort_keys=True)
+        json.dump(main_results, f, indent=2, sort_keys=True)
     
-    print(f"\nDetailed results saved to: {args.output_file}")
+    print(f"\nMain results saved to: {args.output_file}")
+    
+    # Generate feature usage filename and save detailed feature usage
+    base_name = args.output_file.replace(".json", "")
+    feature_usage_file = f"{base_name}_feature_usage.json"
+    
+    if "feature_usage_counter" in results and results["feature_usage_counter"]:
+        save_feature_usage_analysis(
+            results["feature_usage_counter"], 
+            feature_classifications, 
+            feature_usage_file
+        )
+    else:
+        print("No feature usage data available to save.")
 
 
 if __name__ == "__main__":
