@@ -259,7 +259,7 @@ class SteeringCollector:
 
 
 if __name__ == "__main__":
-    load_dotenv()
+    # load_dotenv()
     extractor = SteeringCollector(
         model_name="google/gemma-2-2b-it",
         adapter_local_path="./artifacts/adapter-mild-glade-10:v0/adapter",
