@@ -5,7 +5,7 @@ Compute the steering vectors per dataset sample an existing HookedModel + SAEAda
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 import json
-from dotenv import load_dotenv
+# from dotenv import load_dotenv
 import numpy as np
 import torch
 from datasets import load_dataset
