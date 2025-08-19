@@ -246,7 +246,18 @@ def analyze_steering_features(
             batch_prompts = []
             append_response = CONFIG["analysis"]["append_response"]
             
-            
+            for idx in batch_indices:
+                sample = eval_dataset[int(idx)]
+                prompt = sample["text_prompt"]
+                
+                if append_response == "chosen":
+                    chosen_response = sample["text_chosen"]
+                    text = prompt + chosen_response
+                elif append_response == "rejected":
+                    rejected_response = sample["text_rejected"]
+                    text = prompt + rejected_response
+                else:
+                    text = sample["text_prompt"]
                     
                 batch_prompts.append(text)
             
