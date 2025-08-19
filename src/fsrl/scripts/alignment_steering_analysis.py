@@ -248,16 +248,19 @@ def analyze_steering_features(
             
             for idx in batch_indices:
                 sample = eval_dataset[int(idx)]
+                prompt = sample["text_prompt"]
                 
                 if append_response is None:
                     # Use prompt only (default)
-                    text = sample["text_prompt"]
+                    text = prompt
                 elif append_response == "chosen":
                     # Use prompt + chosen response (as in training)
-                    text = sample["text_chosen"]
+                    chosen_response = sample["text_chosen"]
+                    text = prompt + chosen_response  # FIX: Concatenate prompt and response
                 elif append_response == "rejected":
                     # Use prompt + rejected response
-                    text = sample["text_rejected"]
+                    rejected_response = sample["text_rejected"]
+                    text = prompt + rejected_response # FIX: Concatenate prompt and response
                 else:
                     # Fallback to prompt only
                     text = sample["text_prompt"]
