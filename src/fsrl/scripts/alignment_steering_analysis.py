@@ -60,11 +60,13 @@ CONFIG = {
     }
 }
 
-# Default adapter path
-DEFAULT_ADAPTER_PATH = "models/Gemma2-2B-clean/mild-glade-10/adapter"
+# Default adapter paths - different for alignment vs formatting
+DEFAULT_ALIGNMENT_ADAPTER_PATH = "models/Gemma2-2B-clean/mild-glade-10/adapter"
+DEFAULT_FORMATTING_ADAPTER_PATH = "models/Gemma2-2B-clean/mild-glade-10/adapter"  # Update this when you have a formatting-trained model (OK?)
 
-# Default classification file path - using formatting mode by default
-DEFAULT_CLASSIFICATION_FILE = "outputs/feature_classification/gemma-2-2b/12-gemmascope-res-65k__l0-21_formatting_classified_deepseek-v3-0324.json"
+# Default classification file paths
+DEFAULT_ALIGNMENT_CLASSIFICATION_FILE = "outputs/feature_classification/gemma-2-2b/12-gemmascope-res-65k__l0-21_alignment_classified_deepseek-v3-0324.json"
+DEFAULT_FORMATTING_CLASSIFICATION_FILE = "outputs/feature_classification/gemma-2-2b/12-gemmascope-res-65k__l0-21_formatting_classified_deepseek-v3-0324.json"
 
 dtype_map = {
     "float32": torch.float32,
@@ -365,7 +367,13 @@ def analyze_steering_features(
         "l0_norm_mean": l0_mean,
         "l0_norm_std": l0_std,
         "l0_norm_stderr": l0_stderr,
-        "feature_usage_counter": feature_usage_counter.tolist() if feature_usage_counter is not None else []
+        "feature_usage_counter": feature_usage_counter.tolist() if feature_usage_counter is not None else [],
+        # Raw data for statistical testing
+        "position_level_data": {
+            "position_related_ratios": position_related_ratios,
+            "position_total_steered": position_total_steered,
+            "num_positions": len(position_related_ratios)
+        }
     }
     
     return results
@@ -444,109 +452,311 @@ def save_feature_usage_analysis(feature_usage_counter, feature_classifications, 
     print(f"  - Mean usage per active feature: {usage_summary['mean_usage_per_active_feature']:.1f}")
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Analyze steering in SAE adapter for various classification modes")
-    parser.add_argument("--adapter_path", type=str, default=DEFAULT_ADAPTER_PATH, help=f"Path to the trained SAE adapter (default: {DEFAULT_ADAPTER_PATH})")
-    parser.add_argument("--classification_file", type=str, default=DEFAULT_CLASSIFICATION_FILE, help=f"Path to feature classification JSON file (default: {DEFAULT_CLASSIFICATION_FILE})")
-    parser.add_argument("--classification_mode", type=str, default="formatting", help="Classification mode being analyzed (e.g., 'alignment', 'formatting') - used for output naming and reporting (default: formatting)")
-    parser.add_argument("--sample_size", type=int, default=None, help="Limit dataset size (for testing)")
-    parser.add_argument("--num_analysis_samples", type=int, default=None, help="Number of samples to use for steering analysis (default: use all)")
-    parser.add_argument("--batch_size", type=int, default=2, help="Batch size for processing samples (default: 4)")
-    parser.add_argument("--output_file", type=str, default="outputs/feature_classification/steering_analysis.json", help="Path to save analysis results")
-    parser.add_argument("--append_response", type=str, choices=[None, "chosen", "rejected"], default=None, help="Append response to prompt: None (prompt only, default), 'chosen' (prompt+chosen), 'rejected' (prompt+rejected)")
-    parser.add_argument("--ignore_attention_mask", action="store_true", help="Ignore attention mask (treat all positions as valid, including padding)")
+def run_single_experiment(
+    model, 
+    eval_dataset, 
+    classification_mode: str, 
+    append_response: str, 
+    ignore_attention_mask: bool,
+    classification_file: str,
+    output_base_dir: str,
+    num_analysis_samples: Optional[int] = None,
+    batch_size: int = 2
+) -> dict:
+    """Run a single experiment configuration."""
     
-    args = parser.parse_args()
+    # Set global config for this experiment
+    CONFIG["analysis"]["append_response"] = append_response
+    CONFIG["analysis"]["ignore_attention_mask"] = ignore_attention_mask
     
-    CONFIG["analysis"]["append_response"] = args.append_response
-    CONFIG["analysis"]["ignore_attention_mask"] = args.ignore_attention_mask
+    print(f"\n{'='*80}")
+    print(f"RUNNING EXPERIMENT: {classification_mode.upper()}")
+    print(f"  - Append response: {append_response}")
+    print(f"  - Ignore attention mask: {ignore_attention_mask}")
+    print(f"  - Classification file: {Path(classification_file).name}")
+    print(f"{'='*80}")
     
-    if args.output_file == "outputs/feature_classification/steering_analysis.json":
-        response_suffix = "_prompt_chosen" if CONFIG["analysis"]["append_response"] == "chosen" else ("_prompt_rejected" if CONFIG["analysis"]["append_response"] == "rejected" else "_prompt_only")
-        mask_suffix = "_ignore_mask" if CONFIG["analysis"]["ignore_attention_mask"] else ""
-        args.output_file = f"outputs/feature_classification/{args.classification_mode}_steering_analysis{response_suffix}{mask_suffix}.json"
+    # Load feature classifications for this mode
+    feature_classifications = load_feature_classifications(classification_file)
     
-    Path(args.output_file).parent.mkdir(parents=True, exist_ok=True)
-    
-    print("Loading model and tokenizer...")
-    base_model, tokenizer, device = load_model_and_tokenizer()
-    
-    print("Loading SAE adapter...")
-    sae = load_sae_adapter(args.adapter_path, device)
-    
-    print("Creating hooked model...")
-    model = HookedModel(base_model, sae)
-    
-    # --- FIX 1 (continued): Apply the dropout fix to the model ---
-    # The SimPOTrainer permanently disables dropout layers. To replicate its
-    # evaluation environment, we must do the same.
-    print("Disabling dropout in the model to match the trainer's state...")
-    disable_dropout_in_model(model)
-    model.eval()
-    
-    print("Loading evaluation dataset...")
-    eval_dataset = load_eval_dataset(tokenizer, sample_size=args.sample_size)
-    
-    print("Loading feature classifications...")
-    feature_classifications = load_feature_classifications(args.classification_file)
-    
-    print("Analyzing steering features...")
+    # Run analysis
     results = analyze_steering_features(
         model, 
         eval_dataset, 
         feature_classifications, 
-        classification_mode=args.classification_mode,
-        num_samples=args.num_analysis_samples,
-        batch_size=args.batch_size
+        classification_mode=classification_mode,
+        num_samples=num_analysis_samples,
+        batch_size=batch_size
     )
     
-    print("\n" + "="*60)
-    print(f"{args.classification_mode.upper()} STEERING ANALYSIS RESULTS")
-    print("="*60)
-    print(f"Configuration: append_response = {CONFIG['analysis']['append_response']}")
-    print(f"Classification mode: {args.classification_mode}")
-    print(f"Total unique features steered: {results['total_steered_features']}")
-    print(f"Unique {args.classification_mode}-related features steered: {results['related_steered']}")
-    print(f"Unique not-{args.classification_mode}-related features steered: {results['not_related_steered']}")
-    print(f"Total positions analyzed: {results['total_positions_analyzed']}")
-    print(f"Mean features steered per position (masked): {results['mean_steered_per_position']:.2f}")
-    print()
-    print(f"Baseline {args.classification_mode}-related rate (all features): {results['baseline_related_rate']:.3f}")
-    print(f"Position-averaged steering {args.classification_mode}-related rate: {results['steering_related_rate']:.3f}")
-    print(f"Improvement over baseline: {results['improvement_over_baseline']:.3f}")
-    print()
-    print("L0 Norm Statistics (replicating trainer's metric):")
-    print(f"L0 norm mean: {results['l0_norm_mean']:.2f}")
-    print(f"L0 norm std: {results['l0_norm_std']:.2f}")
-    print(f"L0 norm stderr: {results['l0_norm_stderr']:.2f}")
-    print()
+    # Generate output filename
+    response_suffix = f"_prompt_{append_response}" if append_response else "_prompt_only"
+    mask_suffix = "_ignore_mask" if ignore_attention_mask else ""
+    output_file = Path(output_base_dir) / f"{classification_mode}_steering_analysis{response_suffix}{mask_suffix}.json"
+    output_file.parent.mkdir(parents=True, exist_ok=True)
     
-    if results['improvement_over_baseline'] > 0:
-        print(f"✅ POSITIVE RESULT: Adapter steers more {args.classification_mode}-related features than random!")
-    else:
-        print(f"❌ NEGATIVE RESULT: Adapter does not preferentially steer {args.classification_mode}-related features")
-    
-    print("="*60)
-    
-    # Save main analysis results (without detailed feature usage)
+    # Save main results (without detailed feature usage)
     main_results = {k: v for k, v in results.items() if k != "feature_usage_counter"}
-    with open(args.output_file, 'w') as f:
+    with open(output_file, 'w') as f:
         json.dump(main_results, f, indent=2, sort_keys=True)
     
-    print(f"\nMain results saved to: {args.output_file}")
-    
-    # Generate feature usage filename and save detailed feature usage
-    base_name = args.output_file.replace(".json", "")
-    feature_usage_file = f"{base_name}_feature_usage.json"
-    
+    # Save detailed feature usage
+    feature_usage_file = str(output_file).replace(".json", "_feature_usage.json")
     if "feature_usage_counter" in results and results["feature_usage_counter"]:
         save_feature_usage_analysis(
             results["feature_usage_counter"], 
             feature_classifications, 
             feature_usage_file
         )
+    
+    # Print summary
+    print(f"\n{classification_mode.upper()} STEERING ANALYSIS RESULTS")
+    print(f"Append response: {append_response}, Ignore mask: {ignore_attention_mask}")
+    print(f"Total unique features steered: {results['total_steered_features']}")
+    print(f"Unique {classification_mode}-related features steered: {results['related_steered']}")
+    print(f"Unique not-{classification_mode}-related features steered: {results['not_related_steered']}")
+    print(f"Baseline {classification_mode}-related rate: {results['baseline_related_rate']:.3f}")
+    print(f"Steering {classification_mode}-related rate: {results['steering_related_rate']:.3f}")
+    print(f"Improvement over baseline: {results['improvement_over_baseline']:.3f}")
+    
+    if results['improvement_over_baseline'] > 0:
+        print(f"✅ POSITIVE: Steers more {classification_mode}-related features than random")
     else:
-        print("No feature usage data available to save.")
+        print(f"❌ NEGATIVE: Does not preferentially steer {classification_mode}-related features")
+    
+    print(f"Results saved to: {output_file}")
+    print(f"Feature usage saved to: {feature_usage_file}")
+    
+    return results
+
+
+def run_all_experiments(
+    alignment_adapter_path: str,
+    formatting_adapter_path: str,
+    alignment_classification_file: str,
+    formatting_classification_file: str,
+    output_base_dir: str,
+    sample_size: Optional[int] = None,
+    num_analysis_samples: Optional[int] = None,
+    batch_size: int = 2
+) -> dict:
+    """Run all experiment combinations: alignment/formatting × prompt/chosen/rejected × ignore_mask=True."""
+    
+    print("="*100)
+    print("RUNNING COMPREHENSIVE STEERING ANALYSIS")
+    print("Testing: alignment/formatting × prompt/chosen/rejected × ignore_attention_mask=True")
+    print("="*100)
+    
+    all_results = {}
+    
+    # Define experiment configurations
+    classification_configs = [
+        ("alignment", alignment_adapter_path, alignment_classification_file),
+        ("formatting", formatting_adapter_path, formatting_classification_file)
+    ]
+    
+    append_response_options = [None, "chosen", "rejected"]  # None = prompt only
+    ignore_attention_mask = True  # Fixed to True as requested
+    
+    for classification_mode, adapter_path, classification_file in classification_configs:
+        print(f"\n{'='*60}")
+        print(f"LOADING MODEL FOR {classification_mode.upper()} ANALYSIS")
+        print(f"Adapter path: {adapter_path}")
+        print(f"{'='*60}")
+        
+        # Load model for this classification mode
+        base_model, tokenizer, device = load_model_and_tokenizer()
+        sae = load_sae_adapter(adapter_path, device)
+        model = HookedModel(base_model, sae)
+        
+        # Disable dropout to match trainer state
+        from trl.trainer.utils import disable_dropout_in_model
+        disable_dropout_in_model(model)
+        model.eval()
+        
+        # Load evaluation dataset (only once per classification mode)
+        eval_dataset = load_eval_dataset(tokenizer, sample_size=sample_size)
+        
+        # Run experiments for each append_response option
+        for append_response in append_response_options:
+            experiment_key = f"{classification_mode}_{append_response or 'prompt_only'}_ignore_mask"
+            
+            try:
+                results = run_single_experiment(
+                    model=model,
+                    eval_dataset=eval_dataset,
+                    classification_mode=classification_mode,
+                    append_response=append_response,
+                    ignore_attention_mask=ignore_attention_mask,
+                    classification_file=classification_file,
+                    output_base_dir=output_base_dir,
+                    num_analysis_samples=num_analysis_samples,
+                    batch_size=batch_size
+                )
+                
+                all_results[experiment_key] = results
+                
+            except Exception as e:
+                print(f"❌ ERROR in experiment {experiment_key}: {e}")
+                all_results[experiment_key] = {"error": str(e)}
+        
+        # Clean up GPU memory between classification modes
+        del model, sae, base_model
+        torch.cuda.empty_cache() if torch.cuda.is_available() else None
+    
+    # Save comprehensive summary
+    summary_file = Path(output_base_dir) / "comprehensive_steering_analysis_summary.json"
+    with open(summary_file, 'w') as f:
+        # Save summary without feature_usage_counter to keep file manageable
+        summary_results = {}
+        for key, result in all_results.items():
+            if isinstance(result, dict) and "feature_usage_counter" in result:
+                summary_results[key] = {k: v for k, v in result.items() if k != "feature_usage_counter"}
+            else:
+                summary_results[key] = result
+        json.dump(summary_results, f, indent=2, sort_keys=True)
+    
+    print(f"\n{'='*100}")
+    print("COMPREHENSIVE ANALYSIS COMPLETE")
+    print(f"Summary saved to: {summary_file}")
+    print("Individual experiment results saved in output directory")
+    print(f"{'='*100}")
+    
+def main():
+    parser = argparse.ArgumentParser(description="Analyze steering in SAE adapter for various classification modes")
+    parser.add_argument("--run_all_experiments", action="store_true", help="Run comprehensive experiments: alignment/formatting × prompt/chosen/rejected × ignore_mask=True")
+    parser.add_argument("--alignment_adapter_path", type=str, default=DEFAULT_ALIGNMENT_ADAPTER_PATH, help=f"Path to alignment-trained SAE adapter (default: {DEFAULT_ALIGNMENT_ADAPTER_PATH})")
+    parser.add_argument("--formatting_adapter_path", type=str, default=DEFAULT_FORMATTING_ADAPTER_PATH, help=f"Path to formatting-trained SAE adapter (default: {DEFAULT_FORMATTING_ADAPTER_PATH})")
+    parser.add_argument("--adapter_path", type=str, help="Path to SAE adapter (for single experiments)")
+    parser.add_argument("--alignment_classification_file", type=str, default=DEFAULT_ALIGNMENT_CLASSIFICATION_FILE, help=f"Path to alignment classification JSON file (default: {DEFAULT_ALIGNMENT_CLASSIFICATION_FILE})")
+    parser.add_argument("--formatting_classification_file", type=str, default=DEFAULT_FORMATTING_CLASSIFICATION_FILE, help=f"Path to formatting classification JSON file (default: {DEFAULT_FORMATTING_CLASSIFICATION_FILE})")
+    parser.add_argument("--classification_file", type=str, help="Path to feature classification JSON file (for single experiments)")
+    parser.add_argument("--classification_mode", type=str, default="formatting", help="Classification mode being analyzed (e.g., 'alignment', 'formatting') - used for output naming and reporting (default: formatting)")
+    parser.add_argument("--sample_size", type=int, default=None, help="Limit dataset size (for testing)")
+    parser.add_argument("--num_analysis_samples", type=int, default=None, help="Number of samples to use for steering analysis (default: use all)")
+    parser.add_argument("--batch_size", type=int, default=2, help="Batch size for processing samples (default: 2)")
+    parser.add_argument("--output_file", type=str, help="Path to save analysis results (for single experiments)")
+    parser.add_argument("--output_base_dir", type=str, default="outputs/feature_classification/comprehensive_analysis", help="Base directory for comprehensive experiment outputs")
+    parser.add_argument("--append_response", type=str, choices=[None, "chosen", "rejected"], default=None, help="Append response to prompt: None (prompt only, default), 'chosen' (prompt+chosen), 'rejected' (prompt+rejected)")
+    parser.add_argument("--ignore_attention_mask", action="store_true", help="Ignore attention mask (treat all positions as valid, including padding)")
+    
+    args = parser.parse_args()
+    
+    if args.run_all_experiments:
+        # Run comprehensive experiments
+        print("Running comprehensive steering analysis...")
+        results = run_all_experiments(
+            alignment_adapter_path=args.alignment_adapter_path,
+            formatting_adapter_path=args.formatting_adapter_path,
+            alignment_classification_file=args.alignment_classification_file,
+            formatting_classification_file=args.formatting_classification_file,
+            output_base_dir=args.output_base_dir,
+            sample_size=args.sample_size,
+            num_analysis_samples=args.num_analysis_samples,
+            batch_size=args.batch_size
+        )
+        return results
+    
+    else:
+        # Run single experiment (existing behavior)
+        # Determine defaults based on classification mode
+        if not args.adapter_path:
+            args.adapter_path = DEFAULT_ALIGNMENT_ADAPTER_PATH if args.classification_mode == "alignment" else DEFAULT_FORMATTING_ADAPTER_PATH
+        
+        if not args.classification_file:
+            args.classification_file = DEFAULT_ALIGNMENT_CLASSIFICATION_FILE if args.classification_mode == "alignment" else DEFAULT_FORMATTING_CLASSIFICATION_FILE
+        
+        CONFIG["analysis"]["append_response"] = args.append_response
+        CONFIG["analysis"]["ignore_attention_mask"] = args.ignore_attention_mask
+        
+        if not args.output_file:
+            response_suffix = "_prompt_chosen" if CONFIG["analysis"]["append_response"] == "chosen" else ("_prompt_rejected" if CONFIG["analysis"]["append_response"] == "rejected" else "_prompt_only")
+            mask_suffix = "_ignore_mask" if CONFIG["analysis"]["ignore_attention_mask"] else ""
+            args.output_file = f"outputs/feature_classification/{args.classification_mode}_steering_analysis{response_suffix}{mask_suffix}.json"
+        
+        Path(args.output_file).parent.mkdir(parents=True, exist_ok=True)
+        
+        print("Loading model and tokenizer...")
+        base_model, tokenizer, device = load_model_and_tokenizer()
+        
+        print("Loading SAE adapter...")
+        sae = load_sae_adapter(args.adapter_path, device)
+        
+        print("Creating hooked model...")
+        model = HookedModel(base_model, sae)
+        
+        # --- FIX 1 (continued): Apply the dropout fix to the model ---
+        # The SimPOTrainer permanently disables dropout layers. To replicate its
+        # evaluation environment, we must do the same.
+        print("Disabling dropout in the model to match the trainer's state...")
+        disable_dropout_in_model(model)
+        model.eval()
+        
+        print("Loading evaluation dataset...")
+        eval_dataset = load_eval_dataset(tokenizer, sample_size=args.sample_size)
+        
+        print("Loading feature classifications...")
+        feature_classifications = load_feature_classifications(args.classification_file)
+        
+        print("Analyzing steering features...")
+        results = analyze_steering_features(
+            model, 
+            eval_dataset, 
+            feature_classifications, 
+            classification_mode=args.classification_mode,
+            num_samples=args.num_analysis_samples,
+            batch_size=args.batch_size
+        )
+        
+        print("\n" + "="*60)
+        print(f"{args.classification_mode.upper()} STEERING ANALYSIS RESULTS")
+        print("="*60)
+        print(f"Configuration: append_response = {CONFIG['analysis']['append_response']}")
+        print(f"Classification mode: {args.classification_mode}")
+        print(f"Total unique features steered: {results['total_steered_features']}")
+        print(f"Unique {args.classification_mode}-related features steered: {results['related_steered']}")
+        print(f"Unique not-{args.classification_mode}-related features steered: {results['not_related_steered']}")
+        print(f"Total positions analyzed: {results['total_positions_analyzed']}")
+        print(f"Mean features steered per position (masked): {results['mean_steered_per_position']:.2f}")
+        print()
+        print(f"Baseline {args.classification_mode}-related rate (all features): {results['baseline_related_rate']:.3f}")
+        print(f"Position-averaged steering {args.classification_mode}-related rate: {results['steering_related_rate']:.3f}")
+        print(f"Improvement over baseline: {results['improvement_over_baseline']:.3f}")
+        print()
+        print("L0 Norm Statistics (replicating trainer's metric):")
+        print(f"L0 norm mean: {results['l0_norm_mean']:.2f}")
+        print(f"L0 norm std: {results['l0_norm_std']:.2f}")
+        print(f"L0 norm stderr: {results['l0_norm_stderr']:.2f}")
+        print()
+        
+        if results['improvement_over_baseline'] > 0:
+            print(f"✅ POSITIVE RESULT: Adapter steers more {args.classification_mode}-related features than random!")
+        else:
+            print(f"❌ NEGATIVE RESULT: Adapter does not preferentially steer {args.classification_mode}-related features")
+        
+        print("="*60)
+        
+        # Save main analysis results (without detailed feature usage)
+        main_results = {k: v for k, v in results.items() if k != "feature_usage_counter"}
+        with open(args.output_file, 'w') as f:
+            json.dump(main_results, f, indent=2, sort_keys=True)
+        
+        print(f"\nMain results saved to: {args.output_file}")
+        
+        # Generate feature usage filename and save detailed feature usage
+        base_name = args.output_file.replace(".json", "")
+        feature_usage_file = f"{base_name}_feature_usage.json"
+        
+        if "feature_usage_counter" in results and results["feature_usage_counter"]:
+            save_feature_usage_analysis(
+                results["feature_usage_counter"], 
+                feature_classifications, 
+                feature_usage_file
+            )
+        else:
+            print("No feature usage data available to save.")
+        
+        return results
 
 
 if __name__ == "__main__":
