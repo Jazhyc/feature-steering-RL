@@ -243,33 +243,53 @@ def analyze_steering_features(
                 'batch_size': len(batch_indices)
             })
             
-            # Prepare batch of prompts based on configuration
-            batch_prompts = []
+            final_input_ids_list = []
             append_response = CONFIG["analysis"]["append_response"]
             
+            # Config values from your trainer
+            max_length = 2048
+            max_prompt_length = 1800
+
             for idx in batch_indices:
                 sample = eval_dataset[int(idx)]
-                prompt = sample["text_prompt"]
+                
+                # The `apply_chat_template` function already applied the template,
+                # so `text_prompt` contains the fully formatted prompt text.
+                prompt_text = sample["text_prompt"]
                 
                 if append_response == "chosen":
-                    chosen_response = sample["text_chosen"]
-                    text = prompt + chosen_response
+                    response_text = sample["text_chosen"]
                 elif append_response == "rejected":
-                    rejected_response = sample["text_rejected"]
-                    text = prompt + rejected_response
+                    response_text = sample["text_rejected"]
                 else:
-                    text = sample["text_prompt"]
-                    
-                batch_prompts.append(text)
-            
-            # Tokenize the batch
-            batch_tokens = model.model.tokenizer(
-                batch_prompts, 
-                return_tensors="pt", 
-                truncation=True, 
-                max_length=1800,
-                padding=True
-            )
+                    response_text = "" # Handle prompt-only case
+                
+                # Step 1: Tokenize components. 
+                # The chat template already added special tokens like BOS to the prompt,
+                # so we tokenize the raw text as is.
+                prompt_tokens = model.model.tokenizer(prompt_text, add_special_tokens=False)['input_ids']
+                response_tokens = model.model.tokenizer(response_text, add_special_tokens=False)['input_ids']
+
+                # Step 2 & 3: Truncate prompt if the combined length is too great.
+                # We use 'keep_end' logic, equivalent to `prompt_tokens[-max_prompt_length:]`.
+                if len(prompt_tokens) + len(response_tokens) > max_length:
+                    prompt_tokens = prompt_tokens[-max_prompt_length:]
+
+                # Step 4 & 5: Truncate response if it's still too long.
+                # We use 'keep_start' logic, equivalent to `response_tokens[:new_len]`.
+                if len(prompt_tokens) + len(response_tokens) > max_length:
+                    new_response_len = max_length - len(prompt_tokens)
+                    response_tokens = response_tokens[:new_response_len]
+                
+                final_input_ids_list.append(prompt_tokens + response_tokens)
+
+            # Step 6: Pad the entire batch of manually-prepared token lists.
+            # We use the tokenizer's `.pad` method which is designed for this.
+            batch_tokens = model.model.tokenizer.pad(
+                {"input_ids": final_input_ids_list},
+                padding=True,
+                return_tensors="pt"
+            ).to(model.device)
             
             # Use run_with_cache to capture steering vectors
             _, llm_cache = model.run_with_cache(batch_tokens["input_ids"], prepend_bos=False)
