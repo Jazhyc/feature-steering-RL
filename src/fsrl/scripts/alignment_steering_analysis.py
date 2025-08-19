@@ -482,6 +482,7 @@ def main():
     
     print("Creating hooked model...")
     model = HookedModel(base_model, sae)
+    model.eval()
     
     print("Loading evaluation dataset...")
     eval_dataset = load_eval_dataset(tokenizer, sample_size=args.sample_size)
