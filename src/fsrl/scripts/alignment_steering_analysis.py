@@ -246,24 +246,7 @@ def analyze_steering_features(
             batch_prompts = []
             append_response = CONFIG["analysis"]["append_response"]
             
-            for idx in batch_indices:
-                sample = eval_dataset[int(idx)]
-                prompt = sample["text_prompt"]
-                
-                if append_response is None:
-                    # Use prompt only (default)
-                    text = prompt
-                elif append_response == "chosen":
-                    # Use prompt + chosen response (as in training)
-                    chosen_response = sample["text_chosen"]
-                    text = prompt + chosen_response  # FIX: Concatenate prompt and response
-                elif append_response == "rejected":
-                    # Use prompt + rejected response
-                    rejected_response = sample["text_rejected"]
-                    text = prompt + rejected_response # FIX: Concatenate prompt and response
-                else:
-                    # Fallback to prompt only
-                    text = sample["text_prompt"]
+            
                     
                 batch_prompts.append(text)
             
@@ -286,9 +269,6 @@ def analyze_steering_features(
             if isinstance(steering_vector, torch.Tensor):
                 steering_vector = steering_vector.float().cpu().numpy()
             
-            # Get attention mask and convert to numpy
-            attention_mask = batch_tokens["attention_mask"].cpu().numpy()  # [batch_size, seq_len]
-            
             # Handle batch and sequence dimensions
             # steering_vector shape: [batch_size, seq_len, num_features]
             # Follow training pattern: calculate L0 per sequence position, then average
@@ -296,29 +276,21 @@ def analyze_steering_features(
             # Process each sample in the batch
             for batch_idx in range(steering_vector.shape[0]):
                 sample_steering = steering_vector[batch_idx]  # [seq_len, features]
-                sample_attention_mask = attention_mask[batch_idx]  # [seq_len]
                 
-                # Only calculate L0 for non-padded positions (attention_mask == 1)
-                valid_positions = sample_attention_mask == 1
-                if not np.any(valid_positions):
-                    # Skip samples with no valid positions
-                    continue
-                
-                # Calculate L0 norm per sequence position, only for valid positions
+                # Calculate L0 norm per sequence position, then take mean (following training pattern)
+                # This matches: torch.sum(sparsity_mask, dim=-1).mean() from get_steering_vector()
                 l0_per_position = np.count_nonzero(np.abs(sample_steering) > 1e-6, axis=1)  # [seq_len]
-                valid_l0_per_position = l0_per_position[valid_positions]  # Only non-padded positions
-                l0_norm = np.mean(valid_l0_per_position)  # Mean across valid sequence positions
+                l0_norm = np.mean(l0_per_position)  # scalar - mean across sequence positions
                 l0_norms.append(l0_norm)
                 
-                # Vectorized analysis of steering at valid sequence positions only
-                valid_sample_steering = sample_steering[valid_positions]  # [num_valid_pos, features]
-                steered_mask = np.abs(valid_sample_steering) > 1e-6  # [num_valid_pos, features] - boolean mask
+                # Vectorized analysis of steering at all sequence positions
+                steered_mask = np.abs(sample_steering) > 1e-6  # [seq_len, features] - boolean mask
                 
-                # Find positions where any steering occurs (among valid positions)
-                positions_with_steering = np.any(steered_mask, axis=1)  # [num_valid_pos] - boolean mask
+                # Find positions where any steering occurs
+                positions_with_steering = np.any(steered_mask, axis=1)  # [seq_len] - boolean mask
                 
                 if np.any(positions_with_steering):
-                    # Get only the positions with steering (among valid positions)
+                    # Get only the positions with steering
                     active_positions = np.where(positions_with_steering)[0]
                     active_steering_mask = steered_mask[active_positions]  # [num_active_pos, features]
                     
@@ -343,10 +315,10 @@ def analyze_steering_features(
                     total_classified_counts = alignment_counts + not_alignment_counts  # [num_active_pos]
                     
                     # Only keep positions with classified features
-                    valid_classification_positions = total_classified_counts > 0
-                    if np.any(valid_classification_positions):
-                        valid_alignment_counts = alignment_counts[valid_classification_positions]
-                        valid_total_counts = total_classified_counts[valid_classification_positions]
+                    valid_positions = total_classified_counts > 0
+                    if np.any(valid_positions):
+                        valid_alignment_counts = alignment_counts[valid_positions]
+                        valid_total_counts = total_classified_counts[valid_positions]
                         
                         # Calculate ratios for valid positions
                         position_ratios = valid_alignment_counts / valid_total_counts  # [num_valid_pos]
