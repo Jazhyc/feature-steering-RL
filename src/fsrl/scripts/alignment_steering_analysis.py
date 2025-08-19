@@ -52,6 +52,7 @@ CONFIG = {
     },
     "analysis": {
         "append_response": None,  # Options: None, "chosen", "rejected". Default None (prompt only)
+        "ignore_attention_mask": False,  # If True, treat all positions as valid (ignore padding)
     }
 }
 
@@ -286,13 +287,21 @@ def analyze_steering_features(
             # Get attention mask to identify valid (non-padded) positions
             attention_mask = batch_tokens["attention_mask"].cpu().numpy()  # [batch_size, seq_len]
             
-            # L0 NORM CALCULATION: Mean features steered per valid position (more accurate than including padding)
+            # Apply attention mask toggle
+            if CONFIG["analysis"]["ignore_attention_mask"]:
+                # Treat all positions as valid (ignore padding)
+                effective_attention_mask = np.ones_like(attention_mask)
+            else:
+                # Use actual attention mask
+                effective_attention_mask = attention_mask
+            
+            # L0 NORM CALCULATION: Mean features steered per valid position
             l0_per_position_batch = np.count_nonzero(np.abs(steering_vector) > 1e-6, axis=-1)  # Shape: [batch, seq]
             
-            # Only count L0 norms for valid positions (non-padded tokens)
+            # Only count L0 norms for valid positions (based on effective mask)
             valid_l0_values = []
             for batch_idx in range(steering_vector.shape[0]):
-                sample_len = int(attention_mask[batch_idx].sum())
+                sample_len = int(effective_attention_mask[batch_idx].sum())
                 if sample_len > 0:
                     valid_l0_values.extend(l0_per_position_batch[batch_idx, :sample_len].tolist())
             
@@ -313,13 +322,13 @@ def analyze_steering_features(
 
             # Process each sample in the batch for alignment analysis
             for batch_idx in range(steering_vector.shape[0]):
-                # Get the true length of the sequence
-                sample_len = int(attention_mask[batch_idx].sum())
+                # Get the length based on effective attention mask
+                sample_len = int(effective_attention_mask[batch_idx].sum())
                 if sample_len == 0:
                     continue
 
-                # We only want to analyze features from REAL tokens (non-padded)
-                sample_steering = steering_vector[batch_idx, :sample_len, :]  # [real_seq_len, features]
+                # Analyze features from positions determined by effective mask
+                sample_steering = steering_vector[batch_idx, :sample_len, :]  # [effective_seq_len, features]
                 sample_steered_mask = (np.abs(sample_steering) > 1e-6)  # [real_seq_len, features]
                 
                 # Check if any steering happens in the real part of this sample
@@ -381,7 +390,9 @@ def analyze_steering_features(
     results = {
         "configuration": {
             "append_response": CONFIG["analysis"]["append_response"],
-            "description": "prompt-only" if CONFIG["analysis"]["append_response"] is None else f"prompt + {CONFIG['analysis']['append_response']} response"
+            "ignore_attention_mask": CONFIG["analysis"]["ignore_attention_mask"],
+            "description": "prompt-only" if CONFIG["analysis"]["append_response"] is None else f"prompt + {CONFIG['analysis']['append_response']} response",
+            "masking_description": "all positions (including padding)" if CONFIG["analysis"]["ignore_attention_mask"] else "valid positions only (no padding)"
         },
         "total_steered_features": len(unique_steered),
         "alignment_related_steered": len(unique_alignment_steered),
@@ -421,11 +432,14 @@ def main():
                         help="Path to save analysis results")
     parser.add_argument("--append_response", type=str, choices=[None, "chosen", "rejected"], default=None,
                         help="Append response to prompt: None (prompt only, default), 'chosen' (prompt+chosen), 'rejected' (prompt+rejected)")
+    parser.add_argument("--ignore_attention_mask", action="store_true",
+                        help="Ignore attention mask (treat all positions as valid, including padding)")
     
     args = parser.parse_args()
     
-    # Update configuration with command-line argument
+    # Update configuration with command-line arguments
     CONFIG["analysis"]["append_response"] = args.append_response
+    CONFIG["analysis"]["ignore_attention_mask"] = args.ignore_attention_mask
     
     # Create output directory
     Path(args.output_file).parent.mkdir(parents=True, exist_ok=True)
