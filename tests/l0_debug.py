@@ -129,8 +129,6 @@ def main():
     # --- 4. RUN ANALYSIS PIPELINE (CORRECTED) ---
     print("\n--- Running Analysis Pipeline (on fixed model) ---")
     
-    # --- START: THE FIX ---
-    # Manually concatenate BOTH input_ids AND attention_mask, just like the trainer does.
     chosen_ids = batch['chosen_input_ids']
     rejected_ids = batch['rejected_input_ids']
     chosen_mask = batch['chosen_attention_mask']
@@ -142,31 +140,31 @@ def main():
     if chosen_ids.shape[1] < max_len:
         pad_len = max_len - chosen_ids.shape[1]
         chosen_ids = F.pad(chosen_ids, (0, pad_len), value=pad_token_id)
-        chosen_mask = F.pad(chosen_mask, (0, pad_len), value=0) # Pad mask with 0
+        chosen_mask = F.pad(chosen_mask, (0, pad_len), value=0)
     if rejected_ids.shape[1] < max_len:
         pad_len = max_len - rejected_ids.shape[1]
         rejected_ids = F.pad(rejected_ids, (0, pad_len), value=pad_token_id)
-        rejected_mask = F.pad(rejected_mask, (0, pad_len), value=0) # Pad mask with 0
+        rejected_mask = F.pad(rejected_mask, (0, pad_len), value=0)
         
     concatenated_ids = torch.cat([chosen_ids, rejected_ids], dim=0)
     concatenated_mask = torch.cat([chosen_mask, rejected_mask], dim=0)
-    # --- END: THE FIX ---
 
     with torch.no_grad(), autocast("cuda", enabled=True, dtype=torch.bfloat16):
-        # Pass the attention_mask to run_with_cache
         _, cache = model.run_with_cache(
             concatenated_ids, 
-            attention_mask=concatenated_mask, # <-- PASS THE MASK
+            attention_mask=concatenated_mask,
             prepend_bos=False
         )
         steering_vector_full = cache["blocks.12.hook_resid_post.hook_sae_adapter"].cpu().float().numpy()
         
-        # Calculate L0 norm only on non-padded positions for a perfect match
+        # --- START: THE FIX ---
+        # To replicate the trainer, we must perform the same "naive" averaging
+        # that includes padding tokens.
         active_features_per_pos = np.count_nonzero(np.abs(steering_vector_full) > 1e-6, axis=-1)
-        mask_np = concatenated_mask.cpu().numpy()
         
-        # Sum of active features across all valid positions / number of valid positions
-        analysis_l0 = np.sum(active_features_per_pos * mask_np) / np.sum(mask_np)
+        # This is the trainer's calculation: a simple mean over all positions.
+        analysis_l0 = np.mean(active_features_per_pos)
+        # --- END: THE FIX ---
 
         print(f"L0 Norm from Analysis Pipeline: {analysis_l0:.4f}")
 
@@ -188,6 +186,7 @@ def main():
     diff = abs(trainer_l0_norm - analysis_l0)
     if diff < 1e-3: 
         print("\n✅ SUCCESS: The results now match perfectly!")
+        print("The cause was the L0 norm calculation including padding tokens in the trainer.")
     else:
         print(f"\n❌ FAILURE: Discrepancy of {diff:.4f} still exists.")
     print("="*40)

@@ -30,6 +30,8 @@ from transformer_lens import HookedTransformer
 from tqdm.auto import tqdm
 
 from fsrl import SAEAdapter, HookedModel, apply_chat_template
+# --- FIX 1: Import the function to disable dropout ---
+from trl.trainer.utils import disable_dropout_in_model
 
 # Set up environment
 load_dotenv()
@@ -57,7 +59,7 @@ CONFIG = {
 }
 
 # Default adapter path
-DEFAULT_ADAPTER_PATH = "models/Gemma2_2B-clean/mild-glade-10/adapter"
+DEFAULT_ADAPTER_PATH = "models/Gemma2-2B-clean/mild-glade-10/adapter"
 
 # Default classification file path
 DEFAULT_CLASSIFICATION_FILE = "models/NeuronpediaCache/gemma-2-2b/12-gemmascope-res-65k__l0-21_classified_deepseek-v3-0324.json"
@@ -99,40 +101,26 @@ def load_sae_adapter(adapter_path: str, device: str) -> SAEAdapter:
 
 def load_eval_dataset(tokenizer, sample_size: Optional[int] = None):
     """Load and process the evaluation dataset."""
-    # Load the evaluation split
     eval_dataset = load_dataset(
         CONFIG["dataset"]["name"], 
         split=CONFIG["dataset"]["eval_split"]
     )
     
-    # Limit dataset size for testing if specified
     if sample_size is not None:
         eval_dataset = eval_dataset.select(range(min(sample_size, len(eval_dataset))))
     
     print(f"Loaded {len(eval_dataset)} evaluation samples")
     
-    # Get original column names to remove after processing
     column_names = list(eval_dataset.features)
-    
-    # Determine task based on append_response configuration
     append_response = CONFIG["analysis"]["append_response"]
     
     if append_response is None:
-        # Default: prompt only (for generation)
         task = "simpo_generation"
         print("Using prompt-only text (simpo_generation task)")
-    elif append_response == "chosen":
-        # Append chosen response to prompt (as in training)
-        task = "simpo"  # This provides prompt + chosen and prompt + rejected
-        print("Appending chosen response to prompt (matching training behavior)")
-    elif append_response == "rejected":
-        # Append rejected response to prompt  
-        task = "simpo"  # This provides prompt + chosen and prompt + rejected
-        print("Appending rejected response to prompt")
     else:
-        raise ValueError(f"Invalid append_response option: {append_response}. Must be None, 'chosen', or 'rejected'")
-    
-    # Apply chat template
+        task = "simpo"
+        print(f"Appending {append_response} response to prompt (matching training behavior)")
+
     eval_dataset = eval_dataset.map(
         apply_chat_template,
         fn_kwargs={
@@ -154,40 +142,29 @@ def load_feature_classifications(classification_file: str) -> Dict[int, str]:
         data = json.load(f)
     
     classifications = {}
-    
-    # Handle different JSON structures
     if isinstance(data, list):
         records = data
     elif isinstance(data, dict):
-        # Look for common keys that contain the list
         for key in ['features', 'items', 'data']:
             if key in data and isinstance(data[key], list):
                 records = data[key]
                 break
         else:
-            # Convert dict to list of records
             records = [{'feature_id': k, **v} if isinstance(v, dict) else {'feature_id': k, 'classification': v} 
                       for k, v in data.items()]
     
-    # Extract feature index and classification
     for record in records:
-        # Try to extract feature index
         feature_idx = None
         if 'index' in record and record['index'] is not None:
-            try:
-                feature_idx = int(record['index'])
-            except:
-                pass
+            try: feature_idx = int(record['index'])
+            except: pass
         elif 'feature_id' in record:
-            # Try to extract index from feature_id
             import re
             fid = record['feature_id']
             if isinstance(fid, str):
                 m = re.search(r'-(\d+)$', fid)
-                if m:
-                    feature_idx = int(m.group(1))
+                if m: feature_idx = int(m.group(1))
 
-        # Get classification
         classification = record.get('classification')
         if feature_idx is not None and classification is not None:
             classifications[feature_idx] = classification
@@ -206,55 +183,36 @@ def analyze_steering_features(
     """
     Analyze which features are being steered and their alignment properties.
     """
-    # Use all samples if num_samples is None, otherwise sample
     if num_samples is None:
         sample_indices = list(range(len(eval_dataset)))
-        print(f"Analyzing steering on all {len(sample_indices)} samples...")
     else:
         sample_indices = np.random.choice(len(eval_dataset), size=min(num_samples, len(eval_dataset)), replace=False)
-        print(f"Analyzing steering on {len(sample_indices)} samples...")
+    
+    print(f"Analyzing steering on {len(sample_indices)} samples...")
     
     all_steered_features = []
     alignment_related_steered = []
     not_alignment_related_steered = []
-    l0_norms = []  # Track L0 norms for each sample
+    l0_norms = []
     
-    # Track position-level statistics for proper averaging
-    position_alignment_ratios = []  # Ratio of alignment features per position
-    position_total_steered = []     # Total steered features per position
+    position_alignment_ratios = []
+    position_total_steered = []
     
     model.eval()
     with torch.no_grad():
-        # Process samples in batches with progress bar
         num_batches = (len(sample_indices) + batch_size - 1) // batch_size
-        batch_iterator = tqdm(
-            range(0, len(sample_indices), batch_size), 
-            desc="Processing batches",
-            total=num_batches,
-            unit="batch"
-        )
+        batch_iterator = tqdm(range(0, len(sample_indices), batch_size), desc="Processing batches", total=num_batches)
         
         for i in batch_iterator:
             batch_indices = sample_indices[i:i + batch_size]
-            
-            # Update progress bar with current batch info
-            batch_iterator.set_postfix({
-                'samples': f"{i + len(batch_indices)}/{len(sample_indices)}",
-                'batch_size': len(batch_indices)
-            })
-            
             final_input_ids_list = []
             append_response = CONFIG["analysis"]["append_response"]
             
-            # Config values from your trainer
             max_length = 2048
             max_prompt_length = 1800
 
             for idx in batch_indices:
                 sample = eval_dataset[int(idx)]
-                
-                # The `apply_chat_template` function already applied the template,
-                # so `text_prompt` contains the fully formatted prompt text.
                 prompt_text = sample["text_prompt"]
                 
                 if append_response == "chosen":
@@ -262,136 +220,92 @@ def analyze_steering_features(
                 elif append_response == "rejected":
                     response_text = sample["text_rejected"]
                 else:
-                    response_text = "" # Handle prompt-only case
+                    response_text = ""
                 
-                # Step 1: Tokenize components. 
-                # The chat template already added special tokens like BOS to the prompt,
-                # so we tokenize the raw text as is.
                 prompt_tokens = model.model.tokenizer(prompt_text, add_special_tokens=False)['input_ids']
                 response_tokens = model.model.tokenizer(response_text, add_special_tokens=False)['input_ids']
 
-                # Step 2 & 3: Truncate prompt if the combined length is too great.
-                # We use 'keep_end' logic, equivalent to `prompt_tokens[-max_prompt_length:]`.
                 if len(prompt_tokens) + len(response_tokens) > max_length:
                     prompt_tokens = prompt_tokens[-max_prompt_length:]
 
-                # Step 4 & 5: Truncate response if it's still too long.
-                # We use 'keep_start' logic, equivalent to `response_tokens[:new_len]`.
                 if len(prompt_tokens) + len(response_tokens) > max_length:
                     new_response_len = max_length - len(prompt_tokens)
                     response_tokens = response_tokens[:new_response_len]
                 
                 final_input_ids_list.append(prompt_tokens + response_tokens)
 
-            # Step 6: Pad the entire batch of manually-prepared token lists.
-            # We use the tokenizer's `.pad` method which is designed for this.
             batch_tokens = model.model.tokenizer.pad(
                 {"input_ids": final_input_ids_list},
                 padding=True,
                 return_tensors="pt"
             ).to(model.device)
             
-            # Use run_with_cache to capture steering vectors
-            _, llm_cache = model.run_with_cache(batch_tokens["input_ids"], prepend_bos=False)
+            # --- FIX 2: Pass the attention mask to the forward pass ---
+            _, llm_cache = model.run_with_cache(
+                batch_tokens["input_ids"],
+                attention_mask=batch_tokens["attention_mask"], # Pass the mask
+                prepend_bos=False
+            )
             
-            # Get the steering vector from the hook_sae_adapter key
             steering_vector = llm_cache["blocks.12.hook_resid_post.hook_sae_adapter"]
             
-            # Convert to numpy if it's a tensor
             if isinstance(steering_vector, torch.Tensor):
                 steering_vector = steering_vector.float().cpu().numpy()
             
-            # Handle batch and sequence dimensions
-            # steering_vector shape: [batch_size, seq_len, num_features]
-            
-            # Get attention mask to identify valid (non-padded) positions
-            attention_mask = batch_tokens["attention_mask"].cpu().numpy()  # [batch_size, seq_len]
-            
-            # Apply attention mask toggle
+            # --- FIX 3: Replicate the trainer's naive L0 norm calculation ---
+            # The trainer's metric is a simple mean over the whole tensor, including padding.
+            l0_per_position_batch = np.count_nonzero(np.abs(steering_vector) > 1e-6, axis=-1)
+            batch_l0_mean = np.mean(l0_per_position_batch)
+            l0_norms.append(batch_l0_mean)
+
+            # For the actual ALIGNMENT ANALYSIS, we correctly use the attention mask.
+            attention_mask = batch_tokens["attention_mask"].cpu().numpy()
             if CONFIG["analysis"]["ignore_attention_mask"]:
-                # Treat all positions as valid (ignore padding)
                 effective_attention_mask = np.ones_like(attention_mask)
             else:
-                # Use actual attention mask
                 effective_attention_mask = attention_mask
             
-            # L0 NORM CALCULATION: Mean features steered per valid position
-            l0_per_position_batch = np.count_nonzero(np.abs(steering_vector) > 1e-6, axis=-1)  # Shape: [batch, seq]
-            
-            # Only count L0 norms for valid positions (based on effective mask)
-            valid_l0_values = []
+            feature_indices = np.arange(steering_vector.shape[2])
+            alignment_mask = np.array([feature_classifications.get(idx) == "alignment-related" for idx in feature_indices])
+            not_alignment_mask = np.array([feature_classifications.get(idx) == "not-alignment-related" for idx in feature_indices])
+
             for batch_idx in range(steering_vector.shape[0]):
                 sample_len = int(effective_attention_mask[batch_idx].sum())
-                if sample_len > 0:
-                    valid_l0_values.extend(l0_per_position_batch[batch_idx, :sample_len].tolist())
-            
-            if valid_l0_values:
-                batch_l0_mean = np.mean(valid_l0_values)  # Mean across valid positions only
-                l0_norms.append(batch_l0_mean)
+                if sample_len == 0: continue
 
-            # Create classification masks for vectorized operations (outside the loop for efficiency)
-            feature_indices = np.arange(steering_vector.shape[2])  # [features]
-            alignment_mask = np.array([
-                feature_classifications.get(idx) == "alignment-related" 
-                for idx in feature_indices
-            ])  # [features]
-            not_alignment_mask = np.array([
-                feature_classifications.get(idx) == "not-alignment-related" 
-                for idx in feature_indices
-            ])  # [features]
-
-            # Process each sample in the batch for alignment analysis
-            for batch_idx in range(steering_vector.shape[0]):
-                # Get the length based on effective attention mask
-                sample_len = int(effective_attention_mask[batch_idx].sum())
-                if sample_len == 0:
-                    continue
-
-                # Analyze features from positions determined by effective mask
-                sample_steering = steering_vector[batch_idx, :sample_len, :]  # [effective_seq_len, features]
-                sample_steered_mask = (np.abs(sample_steering) > 1e-6)  # [real_seq_len, features]
+                sample_steering = steering_vector[batch_idx, :sample_len, :]
+                sample_steered_mask = (np.abs(sample_steering) > 1e-6)
                 
-                # Check if any steering happens in the real part of this sample
-                if not np.any(sample_steered_mask):
-                    continue
+                if not np.any(sample_steered_mask): continue
 
-                # Vectorized calculation of alignment counts per position (for real tokens only)
-                alignment_counts = np.sum(sample_steered_mask & alignment_mask[None, :], axis=1)  # [real_seq_len]
-                not_alignment_counts = np.sum(sample_steered_mask & not_alignment_mask[None, :], axis=1)  # [real_seq_len]
-                total_classified_counts = alignment_counts + not_alignment_counts  # [real_seq_len]
+                alignment_counts = np.sum(sample_steered_mask & alignment_mask[None, :], axis=1)
+                not_alignment_counts = np.sum(sample_steered_mask & not_alignment_mask[None, :], axis=1)
+                total_classified_counts = alignment_counts + not_alignment_counts
                 
-                # Only keep positions with classified features
                 valid_positions = total_classified_counts > 0
                 if np.any(valid_positions):
                     position_ratios = alignment_counts[valid_positions] / total_classified_counts[valid_positions]
                     position_alignment_ratios.extend(position_ratios.tolist())
                     position_total_steered.extend(total_classified_counts[valid_positions].tolist())
                 
-                # Track unique steered features (from real tokens only)
                 steered_features_in_sample = np.where(np.any(sample_steered_mask, axis=0))[0]
                 all_steered_features.extend(steered_features_in_sample.tolist())
                 
-                # Track classified steered features
                 steered_alignment_features = steered_features_in_sample[alignment_mask[steered_features_in_sample]]
                 steered_not_alignment_features = steered_features_in_sample[not_alignment_mask[steered_features_in_sample]]
                 
                 alignment_related_steered.extend(steered_alignment_features.tolist())
                 not_alignment_related_steered.extend(steered_not_alignment_features.tolist())
     
-    # Calculate statistics using position-level analysis
     unique_steered = list(set(all_steered_features))
     unique_alignment_steered = list(set(alignment_related_steered))
     unique_not_alignment_steered = list(set(not_alignment_related_steered))
     
-    # Get baseline statistics from all classified features
     all_classifications = list(feature_classifications.values())
     total_alignment = sum(1 for c in all_classifications if c == "alignment-related")
-    total_not_alignment = sum(1 for c in all_classifications if c == "not-alignment-related")
     baseline_alignment_rate = total_alignment / len(all_classifications) if all_classifications else 0
     
-    # Calculate steering statistics from position-level analysis
     if len(position_alignment_ratios) > 0:
-        # Average alignment rate across all positions where steering occurs
         steering_alignment_rate = float(np.mean(position_alignment_ratios))
         total_positions_analyzed = len(position_alignment_ratios)
         mean_steered_per_position = float(np.mean(position_total_steered))
@@ -400,10 +314,8 @@ def analyze_steering_features(
         total_positions_analyzed = 0
         mean_steered_per_position = 0.0
     
-    # Calculate L0 norm statistics
     l0_norms_array = np.array(l0_norms)
     l0_mean = float(np.mean(l0_norms_array)) if len(l0_norms_array) > 0 else 0.0
-    l0_variance = float(np.var(l0_norms_array)) if len(l0_norms_array) > 0 else 0.0
     l0_std = float(np.std(l0_norms_array)) if len(l0_norms_array) > 0 else 0.0
     l0_stderr = float(l0_std / np.sqrt(len(l0_norms_array))) if len(l0_norms_array) > 0 else 0.0
     
@@ -411,8 +323,6 @@ def analyze_steering_features(
         "configuration": {
             "append_response": CONFIG["analysis"]["append_response"],
             "ignore_attention_mask": CONFIG["analysis"]["ignore_attention_mask"],
-            "description": "prompt-only" if CONFIG["analysis"]["append_response"] is None else f"prompt + {CONFIG['analysis']['append_response']} response",
-            "masking_description": "all positions (including padding)" if CONFIG["analysis"]["ignore_attention_mask"] else "valid positions only (no padding)"
         },
         "total_steered_features": len(unique_steered),
         "alignment_related_steered": len(unique_alignment_steered),
@@ -423,7 +333,6 @@ def analyze_steering_features(
         "steering_alignment_rate": float(steering_alignment_rate),
         "improvement_over_baseline": float(steering_alignment_rate - baseline_alignment_rate),
         "l0_norm_mean": l0_mean,
-        "l0_norm_variance": l0_variance,
         "l0_norm_std": l0_std,
         "l0_norm_stderr": l0_stderr,
     }
@@ -433,45 +342,25 @@ def analyze_steering_features(
 
 def main():
     parser = argparse.ArgumentParser(description="Analyze alignment-related steering in SAE adapter")
-    parser.add_argument("--adapter_path", type=str, default=DEFAULT_ADAPTER_PATH,
-                        help=f"Path to the trained SAE adapter (default: {DEFAULT_ADAPTER_PATH})")
-    parser.add_argument("--classification_file", type=str, default=DEFAULT_CLASSIFICATION_FILE,
-                        help=f"Path to feature classification JSON file (default: {DEFAULT_CLASSIFICATION_FILE})")
-    parser.add_argument("--sample_size", type=int, default=None,
-                        help="Limit dataset size (for testing)")
-    parser.add_argument("--num_analysis_samples", type=int, default=None,
-                        help="Number of samples to use for steering analysis (default: use all)")
-    parser.add_argument("--batch_size", type=int, default=2,
-                        help="Batch size for processing samples (default: 4)")
-    parser.add_argument("--output_file", type=str, default="outputs/alignment_steering_analysis.json",
-                        help="Path to save analysis results")
-    parser.add_argument("--append_response", type=str, choices=[None, "chosen", "rejected"], default=None,
-                        help="Append response to prompt: None (prompt only, default), 'chosen' (prompt+chosen), 'rejected' (prompt+rejected)")
-    parser.add_argument("--ignore_attention_mask", action="store_true",
-                        help="Ignore attention mask (treat all positions as valid, including padding)")
+    parser.add_argument("--adapter_path", type=str, default=DEFAULT_ADAPTER_PATH, help=f"Path to the trained SAE adapter (default: {DEFAULT_ADAPTER_PATH})")
+    parser.add_argument("--classification_file", type=str, default=DEFAULT_CLASSIFICATION_FILE, help=f"Path to feature classification JSON file (default: {DEFAULT_CLASSIFICATION_FILE})")
+    parser.add_argument("--sample_size", type=int, default=None, help="Limit dataset size (for testing)")
+    parser.add_argument("--num_analysis_samples", type=int, default=None, help="Number of samples to use for steering analysis (default: use all)")
+    parser.add_argument("--batch_size", type=int, default=2, help="Batch size for processing samples (default: 4)")
+    parser.add_argument("--output_file", type=str, default="outputs/alignment_steering_analysis.json", help="Path to save analysis results")
+    parser.add_argument("--append_response", type=str, choices=[None, "chosen", "rejected"], default=None, help="Append response to prompt: None (prompt only, default), 'chosen' (prompt+chosen), 'rejected' (prompt+rejected)")
+    parser.add_argument("--ignore_attention_mask", action="store_true", help="Ignore attention mask (treat all positions as valid, including padding)")
     
     args = parser.parse_args()
     
-    # Update configuration with command-line arguments
     CONFIG["analysis"]["append_response"] = args.append_response
     CONFIG["analysis"]["ignore_attention_mask"] = args.ignore_attention_mask
     
-    # Create dynamic output filename based on configuration
-    if args.output_file == "outputs/alignment_steering_analysis.json":  # Using default filename
-        # Generate filename based on configuration
-        response_suffix = ""
-        if CONFIG["analysis"]["append_response"] == "chosen":
-            response_suffix = "_prompt_chosen"
-        elif CONFIG["analysis"]["append_response"] == "rejected":
-            response_suffix = "_prompt_rejected"
-        else:  # None
-            response_suffix = "_prompt_only"
-        
+    if args.output_file == "outputs/alignment_steering_analysis.json":
+        response_suffix = "_prompt_chosen" if CONFIG["analysis"]["append_response"] == "chosen" else ("_prompt_rejected" if CONFIG["analysis"]["append_response"] == "rejected" else "_prompt_only")
         mask_suffix = "_ignore_mask" if CONFIG["analysis"]["ignore_attention_mask"] else ""
-        
         args.output_file = f"outputs/alignment_steering_analysis{response_suffix}{mask_suffix}.json"
     
-    # Create output directory
     Path(args.output_file).parent.mkdir(parents=True, exist_ok=True)
     
     print("Loading model and tokenizer...")
@@ -482,6 +371,12 @@ def main():
     
     print("Creating hooked model...")
     model = HookedModel(base_model, sae)
+    
+    # --- FIX 1 (continued): Apply the dropout fix to the model ---
+    # The SimPOTrainer permanently disables dropout layers. To replicate its
+    # evaluation environment, we must do the same.
+    print("Disabling dropout in the model to match the trainer's state...")
+    disable_dropout_in_model(model)
     model.eval()
     
     print("Loading evaluation dataset...")
@@ -499,33 +394,23 @@ def main():
         batch_size=args.batch_size
     )
     
-    # Print results
     print("\n" + "="*60)
     print("ALIGNMENT STEERING ANALYSIS RESULTS")
     print("="*60)
     print(f"Configuration: append_response = {CONFIG['analysis']['append_response']}")
-    if CONFIG['analysis']['append_response'] is None:
-        print("  (Using prompt-only text)")
-    elif CONFIG['analysis']['append_response'] == "chosen":
-        print("  (Using prompt + chosen response, matching training)")
-    elif CONFIG['analysis']['append_response'] == "rejected":
-        print("  (Using prompt + rejected response)")
-    print()
     print(f"Total unique features steered: {results['total_steered_features']}")
     print(f"Unique alignment-related features steered: {results['alignment_related_steered']}")
     print(f"Unique not alignment-related features steered: {results['not_alignment_related_steered']}")
     print(f"Total positions analyzed: {results['total_positions_analyzed']}")
-    print(f"Mean features steered per position: {results['mean_steered_per_position']:.2f}")
+    print(f"Mean features steered per position (masked): {results['mean_steered_per_position']:.2f}")
     print()
     print(f"Baseline alignment rate (all features): {results['baseline_alignment_rate']:.3f}")
     print(f"Position-averaged steering alignment rate: {results['steering_alignment_rate']:.3f}")
     print(f"Improvement over baseline: {results['improvement_over_baseline']:.3f}")
     print()
-    print("L0 Norm Statistics (sparsity):")
+    print("L0 Norm Statistics (replicating trainer's metric):")
     print(f"L0 norm mean: {results['l0_norm_mean']:.2f}")
     print(f"L0 norm std: {results['l0_norm_std']:.2f}")
-    print(f"L0 norm stderr: {results['l0_norm_stderr']:.2f}")
-    print(f"L0 norm variance: {results['l0_norm_variance']:.2f}")
     print()
     
     if results['improvement_over_baseline'] > 0:
@@ -535,9 +420,8 @@ def main():
     
     print("="*60)
     
-    # Save detailed results
     with open(args.output_file, 'w') as f:
-        json.dump(results, f, indent=2)
+        json.dump(results, f, indent=2, sort_keys=True)
     
     print(f"\nDetailed results saved to: {args.output_file}")
 
