@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
 """
 Experiment: Analyze whether our SAE adapter steers features that are more 
-alignment-related than random chance.
+related to a specific classification (alignment, formatting, etc.) than random chance.
 
 This script:
 1. Loads the evaluation dataset used during training
 2. Applies the chat template and processes it as in training
 3. Analyzes which features are being steered by the adapter
-4. Compares steered features against alignment classifications
+4. Compares steered features against feature classifications (using new standardized format)
 5. Computes metrics to determine if steering is better than random
 
 Usage:
     python src/fsrl/scripts/alignment_steering_analysis.py
+    python src/fsrl/scripts/alignment_steering_analysis.py --classification_mode alignment --classification_file path/to/alignment_classifications.json
+    python src/fsrl/scripts/alignment_steering_analysis.py --classification_mode formatting --classification_file path/to/formatting_classifications.json
     python src/fsrl/scripts/alignment_steering_analysis.py --adapter_path models/custom/path --classification_file path/to/classifications.json
 """
 
@@ -61,8 +63,8 @@ CONFIG = {
 # Default adapter path
 DEFAULT_ADAPTER_PATH = "models/Gemma2-2B-clean/mild-glade-10/adapter"
 
-# Default classification file path
-DEFAULT_CLASSIFICATION_FILE = "models/NeuronpediaCache/gemma-2-2b/12-gemmascope-res-65k__l0-21_classified_deepseek-v3-0324.json"
+# Default classification file path - using formatting mode by default
+DEFAULT_CLASSIFICATION_FILE = "outputs/feature_classification/gemma-2-2b/12-gemmascope-res-65k__l0-21_formatting_classified_deepseek-v3-0324.json"
 
 dtype_map = {
     "float32": torch.float32,
@@ -137,7 +139,7 @@ def load_eval_dataset(tokenizer, sample_size: Optional[int] = None):
 
 
 def load_feature_classifications(classification_file: str) -> Dict[int, str]:
-    """Load feature classifications from JSON file."""
+    """Load feature classifications from JSON file using new standardized format."""
     with open(classification_file, 'r') as f:
         data = json.load(f)
     
@@ -150,7 +152,7 @@ def load_feature_classifications(classification_file: str) -> Dict[int, str]:
                 records = data[key]
                 break
         else:
-            records = [{'feature_id': k, **v} if isinstance(v, dict) else {'feature_id': k, 'classification': v} 
+            records = [{'feature_id': k, **v} if isinstance(v, dict) else {'feature_id': k, 'label': v} 
                       for k, v in data.items()]
     
     for record in records:
@@ -165,9 +167,10 @@ def load_feature_classifications(classification_file: str) -> Dict[int, str]:
                 m = re.search(r'-(\d+)$', fid)
                 if m: feature_idx = int(m.group(1))
 
-        classification = record.get('classification')
-        if feature_idx is not None and classification is not None:
-            classifications[feature_idx] = classification
+        # Use new standardized 'label' column instead of 'classification'
+        label = record.get('label')
+        if feature_idx is not None and label is not None:
+            classifications[feature_idx] = label
     
     print(f"Loaded classifications for {len(classifications)} features")
     return classifications
@@ -177,11 +180,20 @@ def analyze_steering_features(
     model: HookedModel, 
     eval_dataset, 
     feature_classifications: Dict[int, str],
+    classification_mode: str = "formatting",  # New parameter to specify the analysis mode
     num_samples: Optional[int] = None,
     batch_size: int = 2
 ) -> Dict[str, any]:
     """
-    Analyze which features are being steered and their alignment properties.
+    Analyze which features are being steered and their classification properties.
+    
+    Args:
+        model: The hooked model with SAE adapter
+        eval_dataset: Dataset to analyze
+        feature_classifications: Dict mapping feature indices to labels ('related'/'not-related')
+        classification_mode: The type of classification being analyzed ('alignment', 'formatting', etc.)
+        num_samples: Number of samples to analyze
+        batch_size: Batch size for processing
     """
     if num_samples is None:
         sample_indices = list(range(len(eval_dataset)))
@@ -191,12 +203,12 @@ def analyze_steering_features(
     print(f"Analyzing steering on {len(sample_indices)} samples...")
     
     all_steered_features = []
-    alignment_related_steered = []
-    not_alignment_related_steered = []
+    related_steered = []
+    not_related_steered = []
     l0_norms = []
     
     # Track position-level statistics for proper averaging
-    position_alignment_ratios = []
+    position_related_ratios = []
     position_total_steered = []
     
     # Initialize feature usage counter for all SAE features
@@ -269,7 +281,7 @@ def analyze_steering_features(
             batch_l0_mean = np.mean(l0_per_position_batch)
             l0_norms.append(batch_l0_mean)
 
-            # For the actual ALIGNMENT ANALYSIS, we correctly use the attention mask.
+            # For the actual CLASSIFICATION ANALYSIS, we correctly use the attention mask.
             attention_mask = batch_tokens["attention_mask"].cpu().numpy()
             if CONFIG["analysis"]["ignore_attention_mask"]:
                 effective_attention_mask = np.ones_like(attention_mask)
@@ -277,8 +289,9 @@ def analyze_steering_features(
                 effective_attention_mask = attention_mask
             
             feature_indices = np.arange(steering_vector.shape[2])
-            alignment_mask = np.array([feature_classifications.get(idx) == "alignment-related" for idx in feature_indices])
-            not_alignment_mask = np.array([feature_classifications.get(idx) == "not-alignment-related" for idx in feature_indices])
+            # Use new standardized labels: 'related' and 'not-related'
+            related_mask = np.array([feature_classifications.get(idx) == "related" for idx in feature_indices])
+            not_related_mask = np.array([feature_classifications.get(idx) == "not-related" for idx in feature_indices])
 
             for batch_idx in range(steering_vector.shape[0]):
                 sample_len = int(effective_attention_mask[batch_idx].sum())
@@ -289,14 +302,14 @@ def analyze_steering_features(
                 
                 if not np.any(sample_steered_mask): continue
 
-                alignment_counts = np.sum(sample_steered_mask & alignment_mask[None, :], axis=1)
-                not_alignment_counts = np.sum(sample_steered_mask & not_alignment_mask[None, :], axis=1)
-                total_classified_counts = alignment_counts + not_alignment_counts
+                related_counts = np.sum(sample_steered_mask & related_mask[None, :], axis=1)
+                not_related_counts = np.sum(sample_steered_mask & not_related_mask[None, :], axis=1)
+                total_classified_counts = related_counts + not_related_counts
                 
                 valid_positions = total_classified_counts > 0
                 if np.any(valid_positions):
-                    position_ratios = alignment_counts[valid_positions] / total_classified_counts[valid_positions]
-                    position_alignment_ratios.extend(position_ratios.tolist())
+                    position_ratios = related_counts[valid_positions] / total_classified_counts[valid_positions]
+                    position_related_ratios.extend(position_ratios.tolist())
                     position_total_steered.extend(total_classified_counts[valid_positions].tolist())
                 
                 steered_features_in_sample = np.where(np.any(sample_steered_mask, axis=0))[0]
@@ -307,26 +320,26 @@ def analyze_steering_features(
                 feature_usage_in_sample = np.sum(sample_steered_mask, axis=0)  # Shape: [num_features]
                 feature_usage_counter += feature_usage_in_sample.astype(int)
                 
-                steered_alignment_features = steered_features_in_sample[alignment_mask[steered_features_in_sample]]
-                steered_not_alignment_features = steered_features_in_sample[not_alignment_mask[steered_features_in_sample]]
+                steered_related_features = steered_features_in_sample[related_mask[steered_features_in_sample]]
+                steered_not_related_features = steered_features_in_sample[not_related_mask[steered_features_in_sample]]
                 
-                alignment_related_steered.extend(steered_alignment_features.tolist())
-                not_alignment_related_steered.extend(steered_not_alignment_features.tolist())
+                related_steered.extend(steered_related_features.tolist())
+                not_related_steered.extend(steered_not_related_features.tolist())
     
     unique_steered = list(set(all_steered_features))
-    unique_alignment_steered = list(set(alignment_related_steered))
-    unique_not_alignment_steered = list(set(not_alignment_related_steered))
+    unique_related_steered = list(set(related_steered))
+    unique_not_related_steered = list(set(not_related_steered))
     
     all_classifications = list(feature_classifications.values())
-    total_alignment = sum(1 for c in all_classifications if c == "alignment-related")
-    baseline_alignment_rate = total_alignment / len(all_classifications) if all_classifications else 0
+    total_related = sum(1 for c in all_classifications if c == "related")
+    baseline_related_rate = total_related / len(all_classifications) if all_classifications else 0
     
-    if len(position_alignment_ratios) > 0:
-        steering_alignment_rate = float(np.mean(position_alignment_ratios))
-        total_positions_analyzed = len(position_alignment_ratios)
+    if len(position_related_ratios) > 0:
+        steering_related_rate = float(np.mean(position_related_ratios))
+        total_positions_analyzed = len(position_related_ratios)
         mean_steered_per_position = float(np.mean(position_total_steered))
     else:
-        steering_alignment_rate = 0.0
+        steering_related_rate = 0.0
         total_positions_analyzed = 0
         mean_steered_per_position = 0.0
     
@@ -339,15 +352,16 @@ def analyze_steering_features(
         "configuration": {
             "append_response": CONFIG["analysis"]["append_response"],
             "ignore_attention_mask": CONFIG["analysis"]["ignore_attention_mask"],
+            "classification_mode": classification_mode,
         },
         "total_steered_features": len(unique_steered),
-        "alignment_related_steered": len(unique_alignment_steered),
-        "not_alignment_related_steered": len(unique_not_alignment_steered),
+        "related_steered": len(unique_related_steered),
+        "not_related_steered": len(unique_not_related_steered),
         "total_positions_analyzed": total_positions_analyzed,
         "mean_steered_per_position": mean_steered_per_position,
-        "baseline_alignment_rate": float(baseline_alignment_rate),
-        "steering_alignment_rate": float(steering_alignment_rate),
-        "improvement_over_baseline": float(steering_alignment_rate - baseline_alignment_rate),
+        "baseline_related_rate": float(baseline_related_rate),
+        "steering_related_rate": float(steering_related_rate),
+        "improvement_over_baseline": float(steering_related_rate - baseline_related_rate),
         "l0_norm_mean": l0_mean,
         "l0_norm_std": l0_std,
         "l0_norm_stderr": l0_stderr,
@@ -431,13 +445,14 @@ def save_feature_usage_analysis(feature_usage_counter, feature_classifications, 
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Analyze alignment-related steering in SAE adapter")
+    parser = argparse.ArgumentParser(description="Analyze steering in SAE adapter for various classification modes")
     parser.add_argument("--adapter_path", type=str, default=DEFAULT_ADAPTER_PATH, help=f"Path to the trained SAE adapter (default: {DEFAULT_ADAPTER_PATH})")
     parser.add_argument("--classification_file", type=str, default=DEFAULT_CLASSIFICATION_FILE, help=f"Path to feature classification JSON file (default: {DEFAULT_CLASSIFICATION_FILE})")
+    parser.add_argument("--classification_mode", type=str, default="formatting", help="Classification mode being analyzed (e.g., 'alignment', 'formatting') - used for output naming and reporting (default: formatting)")
     parser.add_argument("--sample_size", type=int, default=None, help="Limit dataset size (for testing)")
     parser.add_argument("--num_analysis_samples", type=int, default=None, help="Number of samples to use for steering analysis (default: use all)")
     parser.add_argument("--batch_size", type=int, default=2, help="Batch size for processing samples (default: 4)")
-    parser.add_argument("--output_file", type=str, default="outputs/alignment_steering_analysis.json", help="Path to save analysis results")
+    parser.add_argument("--output_file", type=str, default="outputs/feature_classification/steering_analysis.json", help="Path to save analysis results")
     parser.add_argument("--append_response", type=str, choices=[None, "chosen", "rejected"], default=None, help="Append response to prompt: None (prompt only, default), 'chosen' (prompt+chosen), 'rejected' (prompt+rejected)")
     parser.add_argument("--ignore_attention_mask", action="store_true", help="Ignore attention mask (treat all positions as valid, including padding)")
     
@@ -446,10 +461,10 @@ def main():
     CONFIG["analysis"]["append_response"] = args.append_response
     CONFIG["analysis"]["ignore_attention_mask"] = args.ignore_attention_mask
     
-    if args.output_file == "outputs/alignment_steering_analysis.json":
+    if args.output_file == "outputs/feature_classification/steering_analysis.json":
         response_suffix = "_prompt_chosen" if CONFIG["analysis"]["append_response"] == "chosen" else ("_prompt_rejected" if CONFIG["analysis"]["append_response"] == "rejected" else "_prompt_only")
         mask_suffix = "_ignore_mask" if CONFIG["analysis"]["ignore_attention_mask"] else ""
-        args.output_file = f"outputs/alignment_steering_analysis{response_suffix}{mask_suffix}.json"
+        args.output_file = f"outputs/feature_classification/{args.classification_mode}_steering_analysis{response_suffix}{mask_suffix}.json"
     
     Path(args.output_file).parent.mkdir(parents=True, exist_ok=True)
     
@@ -480,22 +495,24 @@ def main():
         model, 
         eval_dataset, 
         feature_classifications, 
+        classification_mode=args.classification_mode,
         num_samples=args.num_analysis_samples,
         batch_size=args.batch_size
     )
     
     print("\n" + "="*60)
-    print("ALIGNMENT STEERING ANALYSIS RESULTS")
+    print(f"{args.classification_mode.upper()} STEERING ANALYSIS RESULTS")
     print("="*60)
     print(f"Configuration: append_response = {CONFIG['analysis']['append_response']}")
+    print(f"Classification mode: {args.classification_mode}")
     print(f"Total unique features steered: {results['total_steered_features']}")
-    print(f"Unique alignment-related features steered: {results['alignment_related_steered']}")
-    print(f"Unique not alignment-related features steered: {results['not_alignment_related_steered']}")
+    print(f"Unique {args.classification_mode}-related features steered: {results['related_steered']}")
+    print(f"Unique not-{args.classification_mode}-related features steered: {results['not_related_steered']}")
     print(f"Total positions analyzed: {results['total_positions_analyzed']}")
     print(f"Mean features steered per position (masked): {results['mean_steered_per_position']:.2f}")
     print()
-    print(f"Baseline alignment rate (all features): {results['baseline_alignment_rate']:.3f}")
-    print(f"Position-averaged steering alignment rate: {results['steering_alignment_rate']:.3f}")
+    print(f"Baseline {args.classification_mode}-related rate (all features): {results['baseline_related_rate']:.3f}")
+    print(f"Position-averaged steering {args.classification_mode}-related rate: {results['steering_related_rate']:.3f}")
     print(f"Improvement over baseline: {results['improvement_over_baseline']:.3f}")
     print()
     print("L0 Norm Statistics (replicating trainer's metric):")
@@ -505,9 +522,9 @@ def main():
     print()
     
     if results['improvement_over_baseline'] > 0:
-        print("✅ POSITIVE RESULT: Adapter steers more alignment-related features than random!")
+        print(f"✅ POSITIVE RESULT: Adapter steers more {args.classification_mode}-related features than random!")
     else:
-        print("❌ NEGATIVE RESULT: Adapter does not preferentially steer alignment-related features")
+        print(f"❌ NEGATIVE RESULT: Adapter does not preferentially steer {args.classification_mode}-related features")
     
     print("="*60)
     
