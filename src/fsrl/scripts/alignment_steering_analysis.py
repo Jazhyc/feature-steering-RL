@@ -426,11 +426,6 @@ def analyze_steering_features(
         "l0_norm_variance": l0_variance,
         "l0_norm_std": l0_std,
         "l0_norm_stderr": l0_stderr,
-        "l0_norms_per_sample": [float(x) for x in l0_norms],
-        "position_alignment_ratios": [float(x) for x in position_alignment_ratios],
-        "steered_feature_indices": [int(x) for x in unique_steered],
-        "alignment_steered_indices": [int(x) for x in unique_alignment_steered],
-        "not_alignment_steered_indices": [int(x) for x in unique_not_alignment_steered],
     }
     
     return results
@@ -460,6 +455,21 @@ def main():
     # Update configuration with command-line arguments
     CONFIG["analysis"]["append_response"] = args.append_response
     CONFIG["analysis"]["ignore_attention_mask"] = args.ignore_attention_mask
+    
+    # Create dynamic output filename based on configuration
+    if args.output_file == "outputs/alignment_steering_analysis.json":  # Using default filename
+        # Generate filename based on configuration
+        response_suffix = ""
+        if CONFIG["analysis"]["append_response"] == "chosen":
+            response_suffix = "_prompt_chosen"
+        elif CONFIG["analysis"]["append_response"] == "rejected":
+            response_suffix = "_prompt_rejected"
+        else:  # None
+            response_suffix = "_prompt_only"
+        
+        mask_suffix = "_ignore_mask" if CONFIG["analysis"]["ignore_attention_mask"] else ""
+        
+        args.output_file = f"outputs/alignment_steering_analysis{response_suffix}{mask_suffix}.json"
     
     # Create output directory
     Path(args.output_file).parent.mkdir(parents=True, exist_ok=True)
