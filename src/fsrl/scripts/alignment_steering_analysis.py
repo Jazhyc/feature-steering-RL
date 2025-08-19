@@ -283,14 +283,22 @@ def analyze_steering_features(
             # Handle batch and sequence dimensions
             # steering_vector shape: [batch_size, seq_len, num_features]
             
-            # 1. L0 NORM CALCULATION: Replicate the trainer's "true mean" over the entire padded batch
-            # This matches: torch.sum(sparsity_mask, dim=-1).mean() from get_steering_vector()
-            l0_per_position_batch = np.count_nonzero(np.abs(steering_vector) > 1e-6, axis=-1)  # Shape: [batch, seq]
-            batch_l0_mean = np.mean(l0_per_position_batch)  # True mean across ALL positions (including padding)
-            l0_norms.append(batch_l0_mean)
-
-            # 2. ALIGNMENT ANALYSIS: Use attention mask to analyze only real tokens
+            # Get attention mask to identify valid (non-padded) positions
             attention_mask = batch_tokens["attention_mask"].cpu().numpy()  # [batch_size, seq_len]
+            
+            # L0 NORM CALCULATION: Mean features steered per valid position (more accurate than including padding)
+            l0_per_position_batch = np.count_nonzero(np.abs(steering_vector) > 1e-6, axis=-1)  # Shape: [batch, seq]
+            
+            # Only count L0 norms for valid positions (non-padded tokens)
+            valid_l0_values = []
+            for batch_idx in range(steering_vector.shape[0]):
+                sample_len = int(attention_mask[batch_idx].sum())
+                if sample_len > 0:
+                    valid_l0_values.extend(l0_per_position_batch[batch_idx, :sample_len].tolist())
+            
+            if valid_l0_values:
+                batch_l0_mean = np.mean(valid_l0_values)  # Mean across valid positions only
+                l0_norms.append(batch_l0_mean)
 
             # Create classification masks for vectorized operations (outside the loop for efficiency)
             feature_indices = np.arange(steering_vector.shape[2])  # [features]
@@ -305,7 +313,7 @@ def analyze_steering_features(
 
             # Process each sample in the batch for alignment analysis
             for batch_idx in range(steering_vector.shape[0]):
-                # Get the true length of the sequence including BOS
+                # Get the true length of the sequence
                 sample_len = int(attention_mask[batch_idx].sum())
                 if sample_len == 0:
                     continue
