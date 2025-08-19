@@ -282,72 +282,68 @@ def analyze_steering_features(
             
             # Handle batch and sequence dimensions
             # steering_vector shape: [batch_size, seq_len, num_features]
-            # Follow training pattern: calculate L0 per sequence position, then average
             
-            # Process each sample in the batch
+            # 1. L0 NORM CALCULATION: Replicate the trainer's "true mean" over the entire padded batch
+            # This matches: torch.sum(sparsity_mask, dim=-1).mean() from get_steering_vector()
+            l0_per_position_batch = np.count_nonzero(np.abs(steering_vector) > 1e-6, axis=-1)  # Shape: [batch, seq]
+            batch_l0_mean = np.mean(l0_per_position_batch)  # True mean across ALL positions (including padding)
+            l0_norms.append(batch_l0_mean)
+
+            # 2. ALIGNMENT ANALYSIS: Use attention mask to analyze only real tokens
+            attention_mask = batch_tokens["attention_mask"].cpu().numpy()  # [batch_size, seq_len]
+            
+            # The BOS token is prepended by HookedTransformer, so we need to add it to our mask
+            bos_mask = np.ones((attention_mask.shape[0], 1), dtype=attention_mask.dtype)
+            full_mask = np.concatenate([bos_mask, attention_mask], axis=1)  # [batch_size, seq_len + 1]
+            
+            # Create classification masks for vectorized operations (outside the loop for efficiency)
+            feature_indices = np.arange(steering_vector.shape[2])  # [features]
+            alignment_mask = np.array([
+                feature_classifications.get(idx) == "alignment-related" 
+                for idx in feature_indices
+            ])  # [features]
+            not_alignment_mask = np.array([
+                feature_classifications.get(idx) == "not-alignment-related" 
+                for idx in feature_indices
+            ])  # [features]
+
+            # Process each sample in the batch for alignment analysis
             for batch_idx in range(steering_vector.shape[0]):
-                sample_steering = steering_vector[batch_idx]  # [seq_len, features]
+                # Get the true length of the sequence including BOS
+                sample_len = int(full_mask[batch_idx].sum())
+                if sample_len == 0:
+                    continue
+
+                # We only want to analyze features from REAL tokens (non-padded)
+                sample_steering = steering_vector[batch_idx, :sample_len, :]  # [real_seq_len, features]
+                sample_steered_mask = (np.abs(sample_steering) > 1e-6)  # [real_seq_len, features]
                 
-                # Calculate L0 norm per sequence position, then take mean (following training pattern)
-                # This matches: torch.sum(sparsity_mask, dim=-1).mean() from get_steering_vector()
-                l0_per_position = np.count_nonzero(np.abs(sample_steering) > 1e-6, axis=1)  # [seq_len]
-                l0_norm = np.mean(l0_per_position)  # scalar - mean across sequence positions
-                l0_norms.append(l0_norm)
+                # Check if any steering happens in the real part of this sample
+                if not np.any(sample_steered_mask):
+                    continue
+
+                # Vectorized calculation of alignment counts per position (for real tokens only)
+                alignment_counts = np.sum(sample_steered_mask & alignment_mask[None, :], axis=1)  # [real_seq_len]
+                not_alignment_counts = np.sum(sample_steered_mask & not_alignment_mask[None, :], axis=1)  # [real_seq_len]
+                total_classified_counts = alignment_counts + not_alignment_counts  # [real_seq_len]
                 
-                # Vectorized analysis of steering at all sequence positions
-                steered_mask = np.abs(sample_steering) > 1e-6  # [seq_len, features] - boolean mask
+                # Only keep positions with classified features
+                valid_positions = total_classified_counts > 0
+                if np.any(valid_positions):
+                    position_ratios = alignment_counts[valid_positions] / total_classified_counts[valid_positions]
+                    position_alignment_ratios.extend(position_ratios.tolist())
+                    position_total_steered.extend(total_classified_counts[valid_positions].tolist())
                 
-                # Find positions where any steering occurs
-                positions_with_steering = np.any(steered_mask, axis=1)  # [seq_len] - boolean mask
+                # Track unique steered features (from real tokens only)
+                steered_features_in_sample = np.where(np.any(sample_steered_mask, axis=0))[0]
+                all_steered_features.extend(steered_features_in_sample.tolist())
                 
-                if np.any(positions_with_steering):
-                    # Get only the positions with steering
-                    active_positions = np.where(positions_with_steering)[0]
-                    active_steering_mask = steered_mask[active_positions]  # [num_active_pos, features]
-                    
-                    # Create classification masks for vectorized operations
-                    feature_indices = np.arange(sample_steering.shape[1])  # [features]
-                    
-                    # Create boolean masks for alignment classifications
-                    alignment_mask = np.array([
-                        feature_classifications.get(idx) == "alignment-related" 
-                        for idx in feature_indices
-                    ])  # [features]
-                    
-                    not_alignment_mask = np.array([
-                        feature_classifications.get(idx) == "not-alignment-related" 
-                        for idx in feature_indices
-                    ])  # [features]
-                    
-                    # Vectorized calculation of alignment counts per position
-                    # active_steering_mask & alignment_mask gives steered alignment features per position
-                    alignment_counts = np.sum(active_steering_mask & alignment_mask[None, :], axis=1)  # [num_active_pos]
-                    not_alignment_counts = np.sum(active_steering_mask & not_alignment_mask[None, :], axis=1)  # [num_active_pos]
-                    total_classified_counts = alignment_counts + not_alignment_counts  # [num_active_pos]
-                    
-                    # Only keep positions with classified features
-                    valid_positions = total_classified_counts > 0
-                    if np.any(valid_positions):
-                        valid_alignment_counts = alignment_counts[valid_positions]
-                        valid_total_counts = total_classified_counts[valid_positions]
-                        
-                        # Calculate ratios for valid positions
-                        position_ratios = valid_alignment_counts / valid_total_counts  # [num_valid_pos]
-                        
-                        # Add to overall statistics
-                        position_alignment_ratios.extend(position_ratios.tolist())
-                        position_total_steered.extend(valid_total_counts.tolist())
-                        
-                        # Track all steered features (for unique counting)
-                        steered_features = np.where(np.any(active_steering_mask, axis=0))[0]
-                        all_steered_features.extend(steered_features.tolist())
-                        
-                        # Track classified steered features
-                        steered_alignment_features = steered_features[alignment_mask[steered_features]]
-                        steered_not_alignment_features = steered_features[not_alignment_mask[steered_features]]
-                        
-                        alignment_related_steered.extend(steered_alignment_features.tolist())
-                        not_alignment_related_steered.extend(steered_not_alignment_features.tolist())
+                # Track classified steered features
+                steered_alignment_features = steered_features_in_sample[alignment_mask[steered_features_in_sample]]
+                steered_not_alignment_features = steered_features_in_sample[not_alignment_mask[steered_features_in_sample]]
+                
+                alignment_related_steered.extend(steered_alignment_features.tolist())
+                not_alignment_related_steered.extend(steered_not_alignment_features.tolist())
     
     # Calculate statistics using position-level analysis
     unique_steered = list(set(all_steered_features))
