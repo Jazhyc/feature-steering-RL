@@ -3,6 +3,7 @@ import lm_eval
 import torch
 import wandb
 from dotenv import load_dotenv
+from pathlib import Path
 from fsrl import SAEAdapter, HookedModel
 from fsrl.utils.wandb_utils import (
     WandBModelDownloader,
@@ -14,14 +15,18 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from lm_eval.models.huggingface import HFLM
 
 def run_eval(runs, tasks, limit=0.01):
+    
+    root = Path(__file__).resolve().parent.parent  # climb up to project root
+    models_path = f"{root}/models/Gemma2-2B-clean"
+    
     load_dotenv()
     wandb.login(key=os.getenv("WANDB_API_KEY"))
-
-    wandb.init(project="feature-steering-RL", name="evals-paper")
+    wandb.init(entity="feature-steering-RL", project="lm-eval")
 
     downloader = WandBModelDownloader(
         entity="feature-steering-RL",
-        project="Gemma2-2B"
+        project="Gemma2-2B-clean",
+        verbose=True
     )
     base_model = HookedTransformer.from_pretrained("google/gemma-2-2b-it", device="cuda", dtype=torch.bfloat16)
     tokenizer = base_model.tokenizer
@@ -29,11 +34,9 @@ def run_eval(runs, tasks, limit=0.01):
     full_results = {}
 
     for run in runs:
-        if run not in list_model_family():
-            downloader.download_model(run)
-        else:
-            print(f"Run {run} found among downloaded models")
-
+        run_objs = downloader.api.runs("feature-steering-RL/Gemma2-2B-clean", filters={"display_name": run})
+        downloader.download_model(run_objs[0], models_path)
+        
         adapter_path = downloader.models_base_dir / "Gemma2-2B" / run / "adapter"
 
         print(f"Loading adapter from: {adapter_path}")
