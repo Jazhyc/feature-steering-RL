@@ -1,5 +1,5 @@
 """
-python scripts/for_paper.py --print_results | tee scripts/logs/eval-log.txt
+python scripts/for_paper.py --print_results 2>&1 | tee scripts/logs/eval-log.txt
 """
 import sys
 import os
