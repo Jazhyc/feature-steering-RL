@@ -195,12 +195,13 @@ cython_debug/
 
 # Project specific files
 
-#  Model files
+#  Model / Data files
 *.safetensors
 *.ckpt
 *.pt
 *.pth
 *.bin
+*.npy
 
 # Maybe this is too broad?
 *.json
