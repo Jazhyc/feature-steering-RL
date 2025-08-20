@@ -180,6 +180,120 @@ def load_feature_classifications(classification_file: str) -> Dict[int, str]:
     return classifications
 
 
+def analyze_features_from_cache(
+    activations: np.ndarray,
+    attention_mask: np.ndarray,
+    feature_classifications: Dict[int, str],
+    classification_mode: str,
+    ignore_attention_mask: bool = False
+) -> Tuple[Dict[str, any], np.ndarray]:
+    """
+    Analyze feature activations and their classification properties.
+    
+    Args:
+        activations: Feature activations of shape [batch, seq_len, num_features]
+        attention_mask: Attention mask of shape [batch, seq_len]
+        feature_classifications: Dict mapping feature indices to labels ('related'/'not-related')
+        classification_mode: The type of classification being analyzed
+        ignore_attention_mask: Whether to ignore the attention mask
+    
+    Returns:
+        Tuple of (analysis_results, feature_usage_counter)
+    """
+    all_steered_features = []
+    related_steered = []
+    not_related_steered = []
+    
+    # Track position-level statistics for proper averaging
+    position_related_ratios = []
+    position_total_steered = []
+    
+    # Initialize feature usage counter
+    num_features = activations.shape[2]
+    feature_usage_counter = np.zeros(num_features, dtype=int)
+    
+    if ignore_attention_mask:
+        effective_attention_mask = np.ones_like(attention_mask)
+    else:
+        effective_attention_mask = attention_mask
+    
+    feature_indices = np.arange(num_features)
+    # Use new standardized labels: 'related' and 'not-related'
+    related_mask = np.array([feature_classifications.get(idx) == "related" for idx in feature_indices])
+    not_related_mask = np.array([feature_classifications.get(idx) == "not-related" for idx in feature_indices])
+
+    for batch_idx in range(activations.shape[0]):
+        sample_len = int(effective_attention_mask[batch_idx].sum())
+        if sample_len == 0: 
+            continue
+
+        sample_activations = activations[batch_idx, :sample_len, :]
+        sample_active_mask = (np.abs(sample_activations) > 1e-6)
+        
+        if not np.any(sample_active_mask): 
+            continue
+
+        related_counts = np.sum(sample_active_mask & related_mask[None, :], axis=1)
+        not_related_counts = np.sum(sample_active_mask & not_related_mask[None, :], axis=1)
+        total_classified_counts = related_counts + not_related_counts
+        
+        valid_positions = total_classified_counts > 0
+        if np.any(valid_positions):
+            position_ratios = related_counts[valid_positions] / total_classified_counts[valid_positions]
+            position_related_ratios.extend(position_ratios.tolist())
+            position_total_steered.extend(total_classified_counts[valid_positions].tolist())
+        
+        active_features_in_sample = np.where(np.any(sample_active_mask, axis=0))[0]
+        all_steered_features.extend(active_features_in_sample.tolist())
+        
+        # Update feature usage counter for this sample
+        # Count how many times each feature is used (across all positions in this sample)
+        feature_usage_in_sample = np.sum(sample_active_mask, axis=0)  # Shape: [num_features]
+        feature_usage_counter += feature_usage_in_sample.astype(int)
+        
+        active_related_features = active_features_in_sample[related_mask[active_features_in_sample]]
+        active_not_related_features = active_features_in_sample[not_related_mask[active_features_in_sample]]
+        
+        related_steered.extend(active_related_features.tolist())
+        not_related_steered.extend(active_not_related_features.tolist())
+
+    unique_steered = list(set(all_steered_features))
+    unique_related_steered = list(set(related_steered))
+    unique_not_related_steered = list(set(not_related_steered))
+    
+    all_classifications = list(feature_classifications.values())
+    total_related = sum(1 for c in all_classifications if c == "related")
+    baseline_related_rate = total_related / len(all_classifications) if all_classifications else 0
+    
+    if len(position_related_ratios) > 0:
+        steering_related_rate = float(np.mean(position_related_ratios))
+        total_positions_analyzed = len(position_related_ratios)
+        mean_steered_per_position = float(np.mean(position_total_steered))
+    else:
+        steering_related_rate = 0.0
+        total_positions_analyzed = 0
+        mean_steered_per_position = 0.0
+    
+    results = {
+        "total_steered_features": len(unique_steered),
+        "related_steered": len(unique_related_steered),
+        "not_related_steered": len(unique_not_related_steered),
+        "total_positions_analyzed": total_positions_analyzed,
+        "mean_steered_per_position": mean_steered_per_position,
+        "baseline_related_rate": float(baseline_related_rate),
+        "steering_related_rate": float(steering_related_rate),
+        "improvement_over_baseline": float(steering_related_rate - baseline_related_rate),
+        # Raw data for statistical testing
+        "position_level_data": {
+            "position_related_ratios": position_related_ratios,
+            "position_total_steered": position_total_steered,
+            "num_positions": len(position_related_ratios)
+        }
+    }
+    
+    return results, feature_usage_counter
+
+
 def analyze_steering_features(
     model: HookedModel, 
     eval_dataset, 
@@ -190,6 +304,7 @@ def analyze_steering_features(
 ) -> Dict[str, any]:
     """
     Analyze which features are being steered and their classification properties.
+    Analyzes both SAE adapter and regular SAE activations.
     
     Args:
         model: The hooked model with SAE adapter
@@ -206,23 +321,17 @@ def analyze_steering_features(
     
     print(f"Analyzing steering on {len(sample_indices)} samples...")
     
-    all_steered_features = []
-    related_steered = []
-    not_related_steered = []
-    l0_norms = []
-    
-    # Track position-level statistics for proper averaging
-    position_related_ratios = []
-    position_total_steered = []
-    
-    # Initialize feature usage counter for all SAE features
-    # Get total number of features from first batch (will be consistent)
-    feature_usage_counter = None
+    l0_norms_adapter = []
+    l0_norms_sae = []
     
     model.eval()
     with torch.no_grad():
         num_batches = (len(sample_indices) + batch_size - 1) // batch_size
         batch_iterator = tqdm(range(0, len(sample_indices), batch_size), desc="Processing batches", total=num_batches)
+        
+        adapter_activations_list = []
+        sae_activations_list = []
+        attention_masks_list = []
         
         for i in batch_iterator:
             batch_indices = sample_indices[i:i + batch_size]
@@ -268,122 +377,100 @@ def analyze_steering_features(
                 prepend_bos=False
             )
             
-            steering_vector = llm_cache["blocks.12.hook_resid_post.hook_sae_adapter"]
+            # Get both adapter and SAE activations
+            adapter_activations = llm_cache["blocks.12.hook_resid_post.hook_sae_adapter"]
+            sae_activations = llm_cache["blocks.12.hook_resid_post.hook_sae_acts_post"]
             
-            if isinstance(steering_vector, torch.Tensor):
-                steering_vector = steering_vector.float().cpu().numpy()
+            if isinstance(adapter_activations, torch.Tensor):
+                adapter_activations = adapter_activations.float().cpu().numpy()
+            if isinstance(sae_activations, torch.Tensor):
+                sae_activations = sae_activations.float().cpu().numpy()
             
-            # Initialize feature usage counter on first batch
-            if feature_usage_counter is None:
-                num_features = steering_vector.shape[2]
-                feature_usage_counter = np.zeros(num_features, dtype=int)
-                print(f"Tracking usage for {num_features} SAE features...")
+            adapter_activations_list.append(adapter_activations)
+            sae_activations_list.append(sae_activations)
+            attention_masks_list.append(batch_tokens["attention_mask"].cpu().numpy())
             
             # --- FIX 3: Replicate the trainer's naive L0 norm calculation ---
             # The trainer's metric is a simple mean over the whole tensor, including padding.
-            l0_per_position_batch = np.count_nonzero(np.abs(steering_vector) > 1e-6, axis=-1)
-            batch_l0_mean = np.mean(l0_per_position_batch)
-            l0_norms.append(batch_l0_mean)
-
-            # For the actual CLASSIFICATION ANALYSIS, we correctly use the attention mask.
-            attention_mask = batch_tokens["attention_mask"].cpu().numpy()
-            if CONFIG["analysis"]["ignore_attention_mask"]:
-                effective_attention_mask = np.ones_like(attention_mask)
-            else:
-                effective_attention_mask = attention_mask
+            l0_per_position_batch_adapter = np.count_nonzero(np.abs(adapter_activations) > 1e-6, axis=-1)
+            batch_l0_mean_adapter = np.mean(l0_per_position_batch_adapter)
+            l0_norms_adapter.append(batch_l0_mean_adapter)
             
-            feature_indices = np.arange(steering_vector.shape[2])
-            # Use new standardized labels: 'related' and 'not-related'
-            related_mask = np.array([feature_classifications.get(idx) == "related" for idx in feature_indices])
-            not_related_mask = np.array([feature_classifications.get(idx) == "not-related" for idx in feature_indices])
-
-            for batch_idx in range(steering_vector.shape[0]):
-                sample_len = int(effective_attention_mask[batch_idx].sum())
-                if sample_len == 0: continue
-
-                sample_steering = steering_vector[batch_idx, :sample_len, :]
-                sample_steered_mask = (np.abs(sample_steering) > 1e-6)
-                
-                if not np.any(sample_steered_mask): continue
-
-                related_counts = np.sum(sample_steered_mask & related_mask[None, :], axis=1)
-                not_related_counts = np.sum(sample_steered_mask & not_related_mask[None, :], axis=1)
-                total_classified_counts = related_counts + not_related_counts
-                
-                valid_positions = total_classified_counts > 0
-                if np.any(valid_positions):
-                    position_ratios = related_counts[valid_positions] / total_classified_counts[valid_positions]
-                    position_related_ratios.extend(position_ratios.tolist())
-                    position_total_steered.extend(total_classified_counts[valid_positions].tolist())
-                
-                steered_features_in_sample = np.where(np.any(sample_steered_mask, axis=0))[0]
-                all_steered_features.extend(steered_features_in_sample.tolist())
-                
-                # Update feature usage counter for this sample
-                # Count how many times each feature is used (across all positions in this sample)
-                feature_usage_in_sample = np.sum(sample_steered_mask, axis=0)  # Shape: [num_features]
-                feature_usage_counter += feature_usage_in_sample.astype(int)
-                
-                steered_related_features = steered_features_in_sample[related_mask[steered_features_in_sample]]
-                steered_not_related_features = steered_features_in_sample[not_related_mask[steered_features_in_sample]]
-                
-                related_steered.extend(steered_related_features.tolist())
-                not_related_steered.extend(steered_not_related_features.tolist())
+            l0_per_position_batch_sae = np.count_nonzero(np.abs(sae_activations) > 1e-6, axis=-1)
+            batch_l0_mean_sae = np.mean(l0_per_position_batch_sae)
+            l0_norms_sae.append(batch_l0_mean_sae)
     
-    unique_steered = list(set(all_steered_features))
-    unique_related_steered = list(set(related_steered))
-    unique_not_related_steered = list(set(not_related_steered))
+    # Concatenate all batches
+    all_adapter_activations = np.concatenate(adapter_activations_list, axis=0)
+    all_sae_activations = np.concatenate(sae_activations_list, axis=0)
+    all_attention_masks = np.concatenate(attention_masks_list, axis=0)
     
-    all_classifications = list(feature_classifications.values())
-    total_related = sum(1 for c in all_classifications if c == "related")
-    baseline_related_rate = total_related / len(all_classifications) if all_classifications else 0
+    # Analyze adapter activations
+    print("Analyzing SAE adapter activations...")
+    adapter_results, adapter_usage_counter = analyze_features_from_cache(
+        all_adapter_activations, 
+        all_attention_masks, 
+        feature_classifications, 
+        classification_mode,
+        CONFIG["analysis"]["ignore_attention_mask"]
+    )
     
-    if len(position_related_ratios) > 0:
-        steering_related_rate = float(np.mean(position_related_ratios))
-        total_positions_analyzed = len(position_related_ratios)
-        mean_steered_per_position = float(np.mean(position_total_steered))
-    else:
-        steering_related_rate = 0.0
-        total_positions_analyzed = 0
-        mean_steered_per_position = 0.0
+    # Analyze SAE activations
+    print("Analyzing regular SAE activations...")
+    sae_results, sae_usage_counter = analyze_features_from_cache(
+        all_sae_activations, 
+        all_attention_masks, 
+        feature_classifications, 
+        classification_mode,
+        CONFIG["analysis"]["ignore_attention_mask"]
+    )
     
-    l0_norms_array = np.array(l0_norms)
-    l0_mean = float(np.mean(l0_norms_array)) if len(l0_norms_array) > 0 else 0.0
-    l0_std = float(np.std(l0_norms_array)) if len(l0_norms_array) > 0 else 0.0
-    l0_stderr = float(l0_std / np.sqrt(len(l0_norms_array))) if len(l0_norms_array) > 0 else 0.0
+    # Calculate L0 norms
+    l0_norms_adapter_array = np.array(l0_norms_adapter)
+    l0_mean_adapter = float(np.mean(l0_norms_adapter_array)) if len(l0_norms_adapter_array) > 0 else 0.0
+    l0_std_adapter = float(np.std(l0_norms_adapter_array)) if len(l0_norms_adapter_array) > 0 else 0.0
+    l0_stderr_adapter = float(l0_std_adapter / np.sqrt(len(l0_norms_adapter_array))) if len(l0_norms_adapter_array) > 0 else 0.0
     
+    l0_norms_sae_array = np.array(l0_norms_sae)
+    l0_mean_sae = float(np.mean(l0_norms_sae_array)) if len(l0_norms_sae_array) > 0 else 0.0
+    l0_std_sae = float(np.std(l0_norms_sae_array)) if len(l0_norms_sae_array) > 0 else 0.0
+    l0_stderr_sae = float(l0_std_sae / np.sqrt(len(l0_norms_sae_array))) if len(l0_norms_sae_array) > 0 else 0.0
+    
+    # Combine results
     results = {
         "configuration": {
             "append_response": CONFIG["analysis"]["append_response"],
             "ignore_attention_mask": CONFIG["analysis"]["ignore_attention_mask"],
             "classification_mode": classification_mode,
         },
-        "total_steered_features": len(unique_steered),
-        "related_steered": len(unique_related_steered),
-        "not_related_steered": len(unique_not_related_steered),
-        "total_positions_analyzed": total_positions_analyzed,
-        "mean_steered_per_position": mean_steered_per_position,
-        "baseline_related_rate": float(baseline_related_rate),
-        "steering_related_rate": float(steering_related_rate),
-        "improvement_over_baseline": float(steering_related_rate - baseline_related_rate),
-        "l0_norm_mean": l0_mean,
-        "l0_norm_std": l0_std,
-        "l0_norm_stderr": l0_stderr,
-        "feature_usage_counter": feature_usage_counter.tolist() if feature_usage_counter is not None else [],
-        # Raw data for statistical testing
-        "position_level_data": {
-            "position_related_ratios": position_related_ratios,
-            "position_total_steered": position_total_steered,
-            "num_positions": len(position_related_ratios)
+        "sae_adapter": {
+            **adapter_results,
+            "l0_norm_mean": l0_mean_adapter,
+            "l0_norm_std": l0_std_adapter,
+            "l0_norm_stderr": l0_stderr_adapter,
+            "feature_usage_counter": adapter_usage_counter.tolist()
+        },
+        "sae_regular": {
+            **sae_results,
+            "l0_norm_mean": l0_mean_sae,
+            "l0_norm_std": l0_std_sae,
+            "l0_norm_stderr": l0_stderr_sae,
+            "feature_usage_counter": sae_usage_counter.tolist()
         }
     }
     
     return results
 
 
-def save_feature_usage_analysis(feature_usage_counter, feature_classifications, output_file):
+def save_feature_usage_analysis(feature_usage_counter, feature_classifications, output_file, analysis_type="adapter"):
     """
     Save detailed feature usage statistics to a separate file.
+    
+    Args:
+        feature_usage_counter: Array of usage counts per feature
+        feature_classifications: Dict mapping feature indices to classifications
+        output_file: Path to save the analysis
+        analysis_type: Type of analysis ("adapter" or "sae") for labeling
     """
     if feature_usage_counter is None or len(feature_usage_counter) == 0:
         print("No feature usage data to save.")
@@ -428,6 +515,7 @@ def save_feature_usage_analysis(feature_usage_counter, feature_classifications, 
     
     # Create summary
     usage_summary = {
+        "analysis_type": analysis_type,
         "total_features": len(feature_usage_counter),
         "active_features": int(active_features),
         "inactive_features": int(len(feature_usage_counter) - active_features),
@@ -449,6 +537,7 @@ def save_feature_usage_analysis(feature_usage_counter, feature_classifications, 
         json.dump(full_usage_analysis, f, indent=2)
     
     print(f"Feature usage analysis saved to: {output_file}")
+    print(f"  - Analysis type: {analysis_type}")
     print(f"  - {active_features}/{len(feature_usage_counter)} features were used")
     print(f"  - Top 10 features account for {top_10_percentage:.1f}% of all usage")
     print(f"  - Mean usage per active feature: {usage_summary['mean_usage_per_active_feature']:.1f}")
@@ -498,36 +587,74 @@ def run_single_experiment(
     output_file.parent.mkdir(parents=True, exist_ok=True)
     
     # Save main results (without detailed feature usage)
-    main_results = {k: v for k, v in results.items() if k != "feature_usage_counter"}
+    main_results = {k: v for k, v in results.items() if not k.endswith("feature_usage_counter")}
+    # Remove feature_usage_counter from nested structures too
+    if "sae_adapter" in main_results:
+        main_results["sae_adapter"] = {k: v for k, v in main_results["sae_adapter"].items() if k != "feature_usage_counter"}
+    if "sae_regular" in main_results:
+        main_results["sae_regular"] = {k: v for k, v in main_results["sae_regular"].items() if k != "feature_usage_counter"}
+    
     with open(output_file, 'w') as f:
         json.dump(main_results, f, indent=2, sort_keys=True)
     
-    # Save detailed feature usage
-    feature_usage_file = str(output_file).replace(".json", "_feature_usage.json")
-    if "feature_usage_counter" in results and results["feature_usage_counter"]:
+    # Save detailed feature usage for both adapter and SAE
+    base_filename = str(output_file).replace(".json", "")
+    
+    if "sae_adapter" in results and "feature_usage_counter" in results["sae_adapter"]:
+        adapter_usage_file = f"{base_filename}_adapter_feature_usage.json"
         save_feature_usage_analysis(
-            results["feature_usage_counter"], 
+            results["sae_adapter"]["feature_usage_counter"], 
             feature_classifications, 
-            feature_usage_file
+            adapter_usage_file,
+            analysis_type="adapter"
         )
     
-    # Print summary
+    if "sae_regular" in results and "feature_usage_counter" in results["sae_regular"]:
+        sae_usage_file = f"{base_filename}_sae_feature_usage.json"
+        save_feature_usage_analysis(
+            results["sae_regular"]["feature_usage_counter"], 
+            feature_classifications, 
+            sae_usage_file,
+            analysis_type="sae"
+        )
+    
+    # Print summary for both adapter and SAE
     print(f"\n{classification_mode.upper()} STEERING ANALYSIS RESULTS")
     print(f"Append response: {append_response}, Ignore mask: {ignore_attention_mask}")
-    print(f"Total unique features steered: {results['total_steered_features']}")
-    print(f"Unique {classification_mode}-related features steered: {results['related_steered']}")
-    print(f"Unique not-{classification_mode}-related features steered: {results['not_related_steered']}")
-    print(f"Baseline {classification_mode}-related rate: {results['baseline_related_rate']:.3f}")
-    print(f"Steering {classification_mode}-related rate: {results['steering_related_rate']:.3f}")
-    print(f"Improvement over baseline: {results['improvement_over_baseline']:.3f}")
     
-    if results['improvement_over_baseline'] > 0:
-        print(f"✅ POSITIVE: Steers more {classification_mode}-related features than random")
-    else:
-        print(f"❌ NEGATIVE: Does not preferentially steer {classification_mode}-related features")
+    if "sae_adapter" in results:
+        adapter_res = results["sae_adapter"]
+        print(f"\n--- SAE ADAPTER RESULTS ---")
+        print(f"Total unique features steered: {adapter_res['total_steered_features']}")
+        print(f"Unique {classification_mode}-related features steered: {adapter_res['related_steered']}")
+        print(f"Unique not-{classification_mode}-related features steered: {adapter_res['not_related_steered']}")
+        print(f"Baseline {classification_mode}-related rate: {adapter_res['baseline_related_rate']:.3f}")
+        print(f"Steering {classification_mode}-related rate: {adapter_res['steering_related_rate']:.3f}")
+        print(f"Improvement over baseline: {adapter_res['improvement_over_baseline']:.3f}")
+        print(f"L0 norm mean: {adapter_res['l0_norm_mean']:.2f}")
+        
+        if adapter_res['improvement_over_baseline'] > 0:
+            print(f"✅ ADAPTER POSITIVE: Steers more {classification_mode}-related features than random")
+        else:
+            print(f"❌ ADAPTER NEGATIVE: Does not preferentially steer {classification_mode}-related features")
     
-    print(f"Results saved to: {output_file}")
-    print(f"Feature usage saved to: {feature_usage_file}")
+    if "sae_regular" in results:
+        sae_res = results["sae_regular"]
+        print(f"\n--- REGULAR SAE RESULTS ---")
+        print(f"Total unique features active: {sae_res['total_steered_features']}")
+        print(f"Unique {classification_mode}-related features active: {sae_res['related_steered']}")
+        print(f"Unique not-{classification_mode}-related features active: {sae_res['not_related_steered']}")
+        print(f"Baseline {classification_mode}-related rate: {sae_res['baseline_related_rate']:.3f}")
+        print(f"SAE {classification_mode}-related rate: {sae_res['steering_related_rate']:.3f}")
+        print(f"Difference from baseline: {sae_res['improvement_over_baseline']:.3f}")
+        print(f"L0 norm mean: {sae_res['l0_norm_mean']:.2f}")
+        
+        if sae_res['improvement_over_baseline'] > 0:
+            print(f"✅ SAE POSITIVE: Activates more {classification_mode}-related features than random")
+        else:
+            print(f"❌ SAE NEGATIVE: Does not preferentially activate {classification_mode}-related features")
+    
+    print(f"\nResults saved to: {output_file}")
     
     return results
 
@@ -606,23 +733,12 @@ def run_all_experiments(
         del model, sae, base_model
         torch.cuda.empty_cache() if torch.cuda.is_available() else None
     
-    # Save comprehensive summary
-    summary_file = Path(output_base_dir) / "comprehensive_steering_analysis_summary.json"
-    with open(summary_file, 'w') as f:
-        # Save summary without feature_usage_counter to keep file manageable
-        summary_results = {}
-        for key, result in all_results.items():
-            if isinstance(result, dict) and "feature_usage_counter" in result:
-                summary_results[key] = {k: v for k, v in result.items() if k != "feature_usage_counter"}
-            else:
-                summary_results[key] = result
-        json.dump(summary_results, f, indent=2, sort_keys=True)
-    
     print(f"\n{'='*100}")
     print("COMPREHENSIVE ANALYSIS COMPLETE")
-    print(f"Summary saved to: {summary_file}")
     print("Individual experiment results saved in output directory")
     print(f"{'='*100}")
+    
+    return all_results
     
 def main():
     parser = argparse.ArgumentParser(description="Analyze steering in SAE adapter for various classification modes")
@@ -710,53 +826,91 @@ def main():
             batch_size=args.batch_size
         )
         
-        print("\n" + "="*60)
+        print("="*60)
         print(f"{args.classification_mode.upper()} STEERING ANALYSIS RESULTS")
         print("="*60)
         print(f"Configuration: append_response = {CONFIG['analysis']['append_response']}")
         print(f"Classification mode: {args.classification_mode}")
-        print(f"Total unique features steered: {results['total_steered_features']}")
-        print(f"Unique {args.classification_mode}-related features steered: {results['related_steered']}")
-        print(f"Unique not-{args.classification_mode}-related features steered: {results['not_related_steered']}")
-        print(f"Total positions analyzed: {results['total_positions_analyzed']}")
-        print(f"Mean features steered per position (masked): {results['mean_steered_per_position']:.2f}")
-        print()
-        print(f"Baseline {args.classification_mode}-related rate (all features): {results['baseline_related_rate']:.3f}")
-        print(f"Position-averaged steering {args.classification_mode}-related rate: {results['steering_related_rate']:.3f}")
-        print(f"Improvement over baseline: {results['improvement_over_baseline']:.3f}")
-        print()
-        print("L0 Norm Statistics (replicating trainer's metric):")
-        print(f"L0 norm mean: {results['l0_norm_mean']:.2f}")
-        print(f"L0 norm std: {results['l0_norm_std']:.2f}")
-        print(f"L0 norm stderr: {results['l0_norm_stderr']:.2f}")
-        print()
         
-        if results['improvement_over_baseline'] > 0:
-            print(f"✅ POSITIVE RESULT: Adapter steers more {args.classification_mode}-related features than random!")
-        else:
-            print(f"❌ NEGATIVE RESULT: Adapter does not preferentially steer {args.classification_mode}-related features")
+        if "sae_adapter" in results:
+            adapter_res = results["sae_adapter"]
+            print(f"\n--- SAE ADAPTER RESULTS ---")
+            print(f"Total unique features steered: {adapter_res['total_steered_features']}")
+            print(f"Unique {args.classification_mode}-related features steered: {adapter_res['related_steered']}")
+            print(f"Unique not-{args.classification_mode}-related features steered: {adapter_res['not_related_steered']}")
+            print(f"Total positions analyzed: {adapter_res['total_positions_analyzed']}")
+            print(f"Mean features steered per position (masked): {adapter_res['mean_steered_per_position']:.2f}")
+            print(f"Baseline {args.classification_mode}-related rate (all features): {adapter_res['baseline_related_rate']:.3f}")
+            print(f"Position-averaged steering {args.classification_mode}-related rate: {adapter_res['steering_related_rate']:.3f}")
+            print(f"Improvement over baseline: {adapter_res['improvement_over_baseline']:.3f}")
+            print(f"L0 norm mean: {adapter_res['l0_norm_mean']:.2f}")
+            print(f"L0 norm std: {adapter_res['l0_norm_std']:.2f}")
+            print(f"L0 norm stderr: {adapter_res['l0_norm_stderr']:.2f}")
+            
+            if adapter_res['improvement_over_baseline'] > 0:
+                print(f"✅ ADAPTER POSITIVE: Steers more {args.classification_mode}-related features than random!")
+            else:
+                print(f"❌ ADAPTER NEGATIVE: Does not preferentially steer {args.classification_mode}-related features")
+        
+        if "sae_regular" in results:
+            sae_res = results["sae_regular"]
+            print(f"\n--- REGULAR SAE RESULTS ---")
+            print(f"Total unique features active: {sae_res['total_steered_features']}")
+            print(f"Unique {args.classification_mode}-related features active: {sae_res['related_steered']}")
+            print(f"Unique not-{args.classification_mode}-related features active: {sae_res['not_related_steered']}")
+            print(f"Total positions analyzed: {sae_res['total_positions_analyzed']}")
+            print(f"Mean features active per position (masked): {sae_res['mean_steered_per_position']:.2f}")
+            print(f"Baseline {args.classification_mode}-related rate (all features): {sae_res['baseline_related_rate']:.3f}")
+            print(f"Position-averaged SAE {args.classification_mode}-related rate: {sae_res['steering_related_rate']:.3f}")
+            print(f"Difference from baseline: {sae_res['improvement_over_baseline']:.3f}")
+            print(f"L0 norm mean: {sae_res['l0_norm_mean']:.2f}")
+            print(f"L0 norm std: {sae_res['l0_norm_std']:.2f}")
+            print(f"L0 norm stderr: {sae_res['l0_norm_stderr']:.2f}")
+            
+            if sae_res['improvement_over_baseline'] > 0:
+                print(f"✅ SAE POSITIVE: Activates more {args.classification_mode}-related features than random!")
+            else:
+                print(f"❌ SAE NEGATIVE: Does not preferentially activate {args.classification_mode}-related features")
         
         print("="*60)
         
         # Save main analysis results (without detailed feature usage)
-        main_results = {k: v for k, v in results.items() if k != "feature_usage_counter"}
+        main_results = {k: v for k, v in results.items() if not k.endswith("feature_usage_counter")}
+        # Remove feature_usage_counter from nested structures too
+        if "sae_adapter" in main_results:
+            main_results["sae_adapter"] = {k: v for k, v in main_results["sae_adapter"].items() if k != "feature_usage_counter"}
+        if "sae_regular" in main_results:
+            main_results["sae_regular"] = {k: v for k, v in main_results["sae_regular"].items() if k != "feature_usage_counter"}
+        
         with open(args.output_file, 'w') as f:
             json.dump(main_results, f, indent=2, sort_keys=True)
         
         print(f"\nMain results saved to: {args.output_file}")
         
-        # Generate feature usage filename and save detailed feature usage
+        # Generate feature usage filenames and save detailed feature usage
         base_name = args.output_file.replace(".json", "")
-        feature_usage_file = f"{base_name}_feature_usage.json"
         
-        if "feature_usage_counter" in results and results["feature_usage_counter"]:
+        if "sae_adapter" in results and "feature_usage_counter" in results["sae_adapter"]:
+            adapter_usage_file = f"{base_name}_adapter_feature_usage.json"
             save_feature_usage_analysis(
-                results["feature_usage_counter"], 
+                results["sae_adapter"]["feature_usage_counter"], 
                 feature_classifications, 
-                feature_usage_file
+                adapter_usage_file,
+                analysis_type="adapter"
             )
         else:
-            print("No feature usage data available to save.")
+            print("No adapter feature usage data available to save.")
+        
+        if "sae_regular" in results and "feature_usage_counter" in results["sae_regular"]:
+            sae_usage_file = f"{base_name}_sae_feature_usage.json"
+            save_feature_usage_analysis(
+                results["sae_regular"]["feature_usage_counter"], 
+                feature_classifications, 
+                sae_usage_file,
+                analysis_type="sae"
+            )
+        else:
+            print("No SAE feature usage data available to save.")
         
         return results
 
