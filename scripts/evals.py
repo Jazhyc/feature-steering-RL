@@ -28,8 +28,6 @@ def run_eval(runs, tasks, limit=0.01):
         project="Gemma2-2B-clean",
         verbose=True
     )
-    base_model = HookedTransformer.from_pretrained("google/gemma-2-2b-it", device="cuda", dtype=torch.bfloat16)
-    tokenizer = base_model.tokenizer
 
     full_results = {}
 
@@ -41,6 +39,12 @@ def run_eval(runs, tasks, limit=0.01):
 
         print(f"Loading adapter from: {adapter_path}")
         sae_adapter = SAEAdapter.load_from_pretrained_adapter(adapter_path, device="cuda")
+        
+        # Create a fresh base model for each adapter to avoid hook point conflicts
+        print(f"Loading fresh base model for run: {run}")
+        base_model = HookedTransformer.from_pretrained("google/gemma-2-2b-it", device="cuda", dtype=torch.bfloat16)
+        tokenizer = base_model.tokenizer
+        
         hooked_model = HookedModel(base_model, sae_adapter)
 
         eval_model = HFLM(pretrained=hooked_model, tokenizer=tokenizer, batch_size=16)
