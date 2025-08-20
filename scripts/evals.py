@@ -37,7 +37,7 @@ def run_eval(runs, tasks, limit=0.01):
         run_objs = downloader.api.runs("feature-steering-RL/Gemma2-2B-clean", filters={"display_name": run})
         downloader.download_model(run_objs[0], models_path)
         
-        adapter_path = downloader.models_base_dir / "Gemma2-2B" / run / "adapter"
+        adapter_path = downloader.models_base_dir / "Gemma2-2B-clean" / run / "adapter"
 
         print(f"Loading adapter from: {adapter_path}")
         sae_adapter = SAEAdapter.load_from_pretrained_adapter(adapter_path, device="cuda")
