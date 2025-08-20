@@ -261,7 +261,7 @@ class SteeringCollector:
 if __name__ == "__main__":
     # load_dotenv()
     extractor = SteeringCollector(
-        model_name="google/gemma-2-2b-it",
+        model_name="google/gemma-2-2b",
         adapter_local_path="./artifacts/adapter-mild-glade-10:v0/adapter",
         hf_dataset="princeton-nlp/llama3-ultrafeedback-armorm",
         split="test",
