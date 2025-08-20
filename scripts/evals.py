@@ -5,7 +5,7 @@ import wandb
 import json
 from dotenv import load_dotenv
 from pathlib import Path
-from fsrl import SAEAdapter, HookedModel
+from fsrl import SAEAdapter, HookedModel, BaseHookedModel
 from fsrl.utils.wandb_utils import (
     WandBModelDownloader,
     download_model_family,
@@ -15,10 +15,10 @@ from transformer_lens import HookedTransformer
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from lm_eval.models.huggingface import HFLM
 
-def run_eval(runs, tasks, limit=0.01, with_adapter=True):
+def run_eval(runs, tasks, limit=0.01, with_adapter=True, full_ft=False):
     
     root = Path(__file__).resolve().parent.parent  # climb up to project root
-    models_path = f"{root}/models/Gemma2-2B-clean"
+    models_path = f"{root}/models/Gemma2-2B-clean" if not full_ft else f"{root}/models/full-gemma2_2B"
     
     load_dotenv()
     wandb.login(key=os.getenv("WANDB_API_KEY"))
@@ -26,7 +26,7 @@ def run_eval(runs, tasks, limit=0.01, with_adapter=True):
 
     downloader = WandBModelDownloader(
         entity="feature-steering-RL",
-        project="Gemma2-2B-clean",
+        project="Gemma2-2B-clean" if not full_ft else "full-gemma2_2B",
         verbose=True
     )
 
@@ -35,26 +35,30 @@ def run_eval(runs, tasks, limit=0.01, with_adapter=True):
     for run in runs:
         print(f"##### Running evaluation for run: {run} #####")
         print("=" * 30)
-        run_objs = downloader.api.runs("feature-steering-RL/Gemma2-2B-clean", filters={"display_name": run})
+        run_objs = downloader.api.runs("feature-steering-rl/full-gemma2_2B", filters={"display_name": run})
         downloader.download_model(run_objs[0], models_path)
-        
-        adapter_path = downloader.models_base_dir / "Gemma2-2B-clean" / run / "adapter"
-
-        print(f"Loading adapter from: {adapter_path}")
-        sae_adapter = SAEAdapter.load_from_pretrained_adapter(adapter_path, device="cuda")
         
         # Create a fresh base model for each adapter to avoid hook point conflicts
         print(f"Loading fresh base model for run: {run}")
-        base_model = HookedTransformer.from_pretrained_no_processing("google/gemma-2-2b-it", device="cuda", dtype=torch.bfloat16)
-        tokenizer = base_model.tokenizer
-        
-        print(f"Loading model with adapter: {with_adapter}")
-        hooked_model = HookedModel(base_model, sae_adapter)
+        if full_ft:
+            base_model_path = downloader.models_base_dir / "full-gemma2_2B" / run / "full_model"
+            base_model = BaseHookedModel.from_pretrained(base_model_path, device="cuda", dtype=torch.bfloat16)
+            hooked_model = base_model
+        else:
+            base_model = HookedTransformer.from_pretrained_no_processing("google/gemma-2-2b-it", device="cuda", dtype=torch.bfloat16)
 
-        # Disable steering if not using adapter
-        if not with_adapter:
-            hooked_model.disable_steering()
-            print(f"Evaluating model without steering")
+            adapter_path = downloader.models_base_dir / "Gemma2-2B-clean" / run / "adapter"
+
+            print(f"Loading adapter from: {adapter_path}")
+            sae_adapter = SAEAdapter.load_from_pretrained_adapter(adapter_path, device="cuda")
+            hooked_model = HookedModel(base_model, sae_adapter)
+        
+            # Disable steering if not using adapter
+            if not with_adapter:
+                hooked_model.disable_steering()
+                print(f"Evaluating model without steering")
+        
+        tokenizer = base_model.tokenizer
 
         # For HookedTransformer without HookedModel wrapper, we need to access the actual PyTorch model
         if hasattr(hooked_model, 'cfg') and hasattr(hooked_model, 'model'):

@@ -33,6 +33,8 @@ class BaseHookedModel(nn.Module):
     def __init__(self, model: HookedTransformer):
         super().__init__()
         self.model = model
+        self.tokenizer = model.tokenizer
+        self.tokenizer.chat_template = model.tokenizer.chat_template
         
         # Add config attribute that SimPOTrainer expects
         space = get_hf_space(model.cfg.model_name)
