@@ -1,7 +1,8 @@
-import argparse
+import os
 import lm_eval
 import torch
 import wandb
+from dotenv import load_dotenv
 from fsrl import SAEAdapter, HookedModel
 from fsrl.utils.wandb_utils import (
     WandBModelDownloader,
@@ -12,14 +13,10 @@ from transformer_lens import HookedTransformer
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from lm_eval.models.huggingface import HFLM
 
-# what tasks we are running on what runs
-stable_run = "royal-valley-2"
-sparse_run = "mild-glade-10"
-runs = [stable_run, sparse_run]
-tasks = ["mmlu", "truthfulqa"]
-
-
 def run_eval(runs, tasks, limit=0.01):
+    load_dotenv()
+    wandb.login(key=os.getenv("WANDB_API_KEY"))
+
     wandb.init(project="feature-steering-RL", name="evals-paper")
 
     downloader = WandBModelDownloader(
@@ -68,7 +65,3 @@ def pretty_results(results):
             print(f"Task: {task}")
             print(f"Result: {result}")
             print("-" * 100)
-
-if __name__ == "__main__":
-    results = run_eval(runs, tasks, limit=1)
-    pretty_results(results)

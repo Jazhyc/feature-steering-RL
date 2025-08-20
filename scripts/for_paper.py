@@ -9,9 +9,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from scripts.evals import run_eval, pretty_results
 import argparse
 
-
-runs = ["royal-valley-2", "mild-glade-10"]
-tasks = ["mmlu", "truthfulqa"]
+runs = ["royal-valley-2", "mild-glade-10"] # stable, sparse
+tasks = ["mmlu", "truthfulqa", "gsm8k"]
 
 def main():
     parser = argparse.ArgumentParser()
