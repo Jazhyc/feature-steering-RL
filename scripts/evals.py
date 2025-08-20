@@ -41,16 +41,16 @@ def run_eval(runs, tasks, limit=0.01):
 
         print(f"Loading adapter from: {adapter_path}")
         sae_adapter = SAEAdapter.load_from_pretrained_adapter(adapter_path, device="cuda")
-        hooked_model = HookedModel(base_model, [sae_adapter])
+        hooked_model = HookedModel(base_model, sae_adapter)
 
         eval_model = HFLM(pretrained=hooked_model, tokenizer=tokenizer, batch_size=16)
             
-        task_manager = lm_eval.tasks.TaskManager()
+        #task_manager = lm_eval.tasks.TaskManager()
 
         results = lm_eval.simple_evaluate(
             model=eval_model,
             tasks=tasks,
-            task_manager=task_manager,
+            #task_manager=task_manager,
             limit=limit,
             apply_chat_template=True,
         )
