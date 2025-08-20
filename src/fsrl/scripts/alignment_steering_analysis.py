@@ -324,14 +324,29 @@ def analyze_steering_features(
     l0_norms_adapter = []
     l0_norms_sae = []
     
+    # Initialize feature usage counters
+    adapter_usage_counter = None
+    sae_usage_counter = None
+    
+    # Track position-level statistics for proper averaging
+    adapter_position_related_ratios = []
+    adapter_position_total_steered = []
+    sae_position_related_ratios = []
+    sae_position_total_steered = []
+    
+    # Track steered features
+    adapter_all_steered_features = []
+    adapter_related_steered = []
+    adapter_not_related_steered = []
+    
+    sae_all_active_features = []
+    sae_related_active = []
+    sae_not_related_active = []
+    
     model.eval()
     with torch.no_grad():
         num_batches = (len(sample_indices) + batch_size - 1) // batch_size
         batch_iterator = tqdm(range(0, len(sample_indices), batch_size), desc="Processing batches", total=num_batches)
-        
-        adapter_activations_list = []
-        sae_activations_list = []
-        attention_masks_list = []
         
         for i in batch_iterator:
             batch_indices = sample_indices[i:i + batch_size]
@@ -386,9 +401,12 @@ def analyze_steering_features(
             if isinstance(sae_activations, torch.Tensor):
                 sae_activations = sae_activations.float().cpu().numpy()
             
-            adapter_activations_list.append(adapter_activations)
-            sae_activations_list.append(sae_activations)
-            attention_masks_list.append(batch_tokens["attention_mask"].cpu().numpy())
+            # Initialize feature usage counters on first batch
+            if adapter_usage_counter is None:
+                num_features = adapter_activations.shape[2]
+                adapter_usage_counter = np.zeros(num_features, dtype=int)
+                sae_usage_counter = np.zeros(num_features, dtype=int)
+                print(f"Tracking usage for {num_features} SAE features...")
             
             # --- FIX 3: Replicate the trainer's naive L0 norm calculation ---
             # The trainer's metric is a simple mean over the whole tensor, including padding.
@@ -399,31 +417,116 @@ def analyze_steering_features(
             l0_per_position_batch_sae = np.count_nonzero(np.abs(sae_activations) > 1e-6, axis=-1)
             batch_l0_mean_sae = np.mean(l0_per_position_batch_sae)
             l0_norms_sae.append(batch_l0_mean_sae)
+
+            # For the actual CLASSIFICATION ANALYSIS, we correctly use the attention mask.
+            attention_mask = batch_tokens["attention_mask"].cpu().numpy()
+            if CONFIG["analysis"]["ignore_attention_mask"]:
+                effective_attention_mask = np.ones_like(attention_mask)
+            else:
+                effective_attention_mask = attention_mask
+            
+            feature_indices = np.arange(adapter_activations.shape[2])
+            # Use new standardized labels: 'related' and 'not-related'
+            related_mask = np.array([feature_classifications.get(idx) == "related" for idx in feature_indices])
+            not_related_mask = np.array([feature_classifications.get(idx) == "not-related" for idx in feature_indices])
+
+            # Process adapter activations
+            for batch_idx in range(adapter_activations.shape[0]):
+                sample_len = int(effective_attention_mask[batch_idx].sum())
+                if sample_len == 0: 
+                    continue
+
+                sample_adapter = adapter_activations[batch_idx, :sample_len, :]
+                sample_adapter_mask = (np.abs(sample_adapter) > 1e-6)
+                
+                if np.any(sample_adapter_mask):
+                    related_counts = np.sum(sample_adapter_mask & related_mask[None, :], axis=1)
+                    not_related_counts = np.sum(sample_adapter_mask & not_related_mask[None, :], axis=1)
+                    total_classified_counts = related_counts + not_related_counts
+                    
+                    valid_positions = total_classified_counts > 0
+                    if np.any(valid_positions):
+                        position_ratios = related_counts[valid_positions] / total_classified_counts[valid_positions]
+                        adapter_position_related_ratios.extend(position_ratios.tolist())
+                        adapter_position_total_steered.extend(total_classified_counts[valid_positions].tolist())
+                    
+                    steered_features_in_sample = np.where(np.any(sample_adapter_mask, axis=0))[0]
+                    adapter_all_steered_features.extend(steered_features_in_sample.tolist())
+                    
+                    # Update feature usage counter for this sample
+                    feature_usage_in_sample = np.sum(sample_adapter_mask, axis=0)  # Shape: [num_features]
+                    adapter_usage_counter += feature_usage_in_sample.astype(int)
+                    
+                    steered_related_features = steered_features_in_sample[related_mask[steered_features_in_sample]]
+                    steered_not_related_features = steered_features_in_sample[not_related_mask[steered_features_in_sample]]
+                    
+                    adapter_related_steered.extend(steered_related_features.tolist())
+                    adapter_not_related_steered.extend(steered_not_related_features.tolist())
+
+            # Process SAE activations
+            for batch_idx in range(sae_activations.shape[0]):
+                sample_len = int(effective_attention_mask[batch_idx].sum())
+                if sample_len == 0: 
+                    continue
+
+                sample_sae = sae_activations[batch_idx, :sample_len, :]
+                sample_sae_mask = (np.abs(sample_sae) > 1e-6)
+                
+                if np.any(sample_sae_mask):
+                    related_counts = np.sum(sample_sae_mask & related_mask[None, :], axis=1)
+                    not_related_counts = np.sum(sample_sae_mask & not_related_mask[None, :], axis=1)
+                    total_classified_counts = related_counts + not_related_counts
+                    
+                    valid_positions = total_classified_counts > 0
+                    if np.any(valid_positions):
+                        position_ratios = related_counts[valid_positions] / total_classified_counts[valid_positions]
+                        sae_position_related_ratios.extend(position_ratios.tolist())
+                        sae_position_total_steered.extend(total_classified_counts[valid_positions].tolist())
+                    
+                    active_features_in_sample = np.where(np.any(sample_sae_mask, axis=0))[0]
+                    sae_all_active_features.extend(active_features_in_sample.tolist())
+                    
+                    # Update feature usage counter for this sample
+                    feature_usage_in_sample = np.sum(sample_sae_mask, axis=0)  # Shape: [num_features]
+                    sae_usage_counter += feature_usage_in_sample.astype(int)
+                    
+                    active_related_features = active_features_in_sample[related_mask[active_features_in_sample]]
+                    active_not_related_features = active_features_in_sample[not_related_mask[active_features_in_sample]]
+                    
+                    sae_related_active.extend(active_related_features.tolist())
+                    sae_not_related_active.extend(active_not_related_features.tolist())
     
-    # Concatenate all batches
-    all_adapter_activations = np.concatenate(adapter_activations_list, axis=0)
-    all_sae_activations = np.concatenate(sae_activations_list, axis=0)
-    all_attention_masks = np.concatenate(attention_masks_list, axis=0)
+    # Process results for adapter
+    unique_adapter_steered = list(set(adapter_all_steered_features))
+    unique_adapter_related_steered = list(set(adapter_related_steered))
+    unique_adapter_not_related_steered = list(set(adapter_not_related_steered))
     
-    # Analyze adapter activations
-    print("Analyzing SAE adapter activations...")
-    adapter_results, adapter_usage_counter = analyze_features_from_cache(
-        all_adapter_activations, 
-        all_attention_masks, 
-        feature_classifications, 
-        classification_mode,
-        CONFIG["analysis"]["ignore_attention_mask"]
-    )
+    all_classifications = list(feature_classifications.values())
+    total_related = sum(1 for c in all_classifications if c == "related")
+    baseline_related_rate = total_related / len(all_classifications) if all_classifications else 0
     
-    # Analyze SAE activations
-    print("Analyzing regular SAE activations...")
-    sae_results, sae_usage_counter = analyze_features_from_cache(
-        all_sae_activations, 
-        all_attention_masks, 
-        feature_classifications, 
-        classification_mode,
-        CONFIG["analysis"]["ignore_attention_mask"]
-    )
+    if len(adapter_position_related_ratios) > 0:
+        adapter_steering_related_rate = float(np.mean(adapter_position_related_ratios))
+        adapter_total_positions_analyzed = len(adapter_position_related_ratios)
+        adapter_mean_steered_per_position = float(np.mean(adapter_position_total_steered))
+    else:
+        adapter_steering_related_rate = 0.0
+        adapter_total_positions_analyzed = 0
+        adapter_mean_steered_per_position = 0.0
+    
+    # Process results for SAE
+    unique_sae_active = list(set(sae_all_active_features))
+    unique_sae_related_active = list(set(sae_related_active))
+    unique_sae_not_related_active = list(set(sae_not_related_active))
+    
+    if len(sae_position_related_ratios) > 0:
+        sae_related_rate = float(np.mean(sae_position_related_ratios))
+        sae_total_positions_analyzed = len(sae_position_related_ratios)
+        sae_mean_active_per_position = float(np.mean(sae_position_total_steered))
+    else:
+        sae_related_rate = 0.0
+        sae_total_positions_analyzed = 0
+        sae_mean_active_per_position = 0.0
     
     # Calculate L0 norms
     l0_norms_adapter_array = np.array(l0_norms_adapter)
@@ -435,6 +538,42 @@ def analyze_steering_features(
     l0_mean_sae = float(np.mean(l0_norms_sae_array)) if len(l0_norms_sae_array) > 0 else 0.0
     l0_std_sae = float(np.std(l0_norms_sae_array)) if len(l0_norms_sae_array) > 0 else 0.0
     l0_stderr_sae = float(l0_std_sae / np.sqrt(len(l0_norms_sae_array))) if len(l0_norms_sae_array) > 0 else 0.0
+    
+    # Create adapter results
+    adapter_results = {
+        "total_steered_features": len(unique_adapter_steered),
+        "related_steered": len(unique_adapter_related_steered),
+        "not_related_steered": len(unique_adapter_not_related_steered),
+        "total_positions_analyzed": adapter_total_positions_analyzed,
+        "mean_steered_per_position": adapter_mean_steered_per_position,
+        "baseline_related_rate": float(baseline_related_rate),
+        "steering_related_rate": float(adapter_steering_related_rate),
+        "improvement_over_baseline": float(adapter_steering_related_rate - baseline_related_rate),
+        # Raw data for statistical testing
+        "position_level_data": {
+            "position_related_ratios": adapter_position_related_ratios,
+            "position_total_steered": adapter_position_total_steered,
+            "num_positions": len(adapter_position_related_ratios)
+        }
+    }
+    
+    # Create SAE results
+    sae_results = {
+        "total_steered_features": len(unique_sae_active),
+        "related_steered": len(unique_sae_related_active),
+        "not_related_steered": len(unique_sae_not_related_active),
+        "total_positions_analyzed": sae_total_positions_analyzed,
+        "mean_steered_per_position": sae_mean_active_per_position,
+        "baseline_related_rate": float(baseline_related_rate),
+        "steering_related_rate": float(sae_related_rate),
+        "improvement_over_baseline": float(sae_related_rate - baseline_related_rate),
+        # Raw data for statistical testing
+        "position_level_data": {
+            "position_related_ratios": sae_position_related_ratios,
+            "position_total_steered": sae_position_total_steered,
+            "num_positions": len(sae_position_related_ratios)
+        }
+    }
     
     # Combine results
     results = {
@@ -448,14 +587,14 @@ def analyze_steering_features(
             "l0_norm_mean": l0_mean_adapter,
             "l0_norm_std": l0_std_adapter,
             "l0_norm_stderr": l0_stderr_adapter,
-            "feature_usage_counter": adapter_usage_counter.tolist()
+            "feature_usage_counter": adapter_usage_counter.tolist() if adapter_usage_counter is not None else []
         },
         "sae_regular": {
             **sae_results,
             "l0_norm_mean": l0_mean_sae,
             "l0_norm_std": l0_std_sae,
             "l0_norm_stderr": l0_stderr_sae,
-            "feature_usage_counter": sae_usage_counter.tolist()
+            "feature_usage_counter": sae_usage_counter.tolist() if sae_usage_counter is not None else []
         }
     }
     
