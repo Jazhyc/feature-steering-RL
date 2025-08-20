@@ -33,6 +33,8 @@ def run_eval(runs, tasks, limit=0.01, with_adapter=True):
     summary_results = {}
 
     for run in runs:
+        print(f"##### Running evaluation for run: {run} #####")
+        print("=" * 30)
         run_objs = downloader.api.runs("feature-steering-RL/Gemma2-2B-clean", filters={"display_name": run})
         downloader.download_model(run_objs[0], models_path)
         
@@ -72,20 +74,23 @@ def run_eval(runs, tasks, limit=0.01, with_adapter=True):
                 # Create HFLM wrapper for lm_eval
                 eval_model = HFLM(pretrained=hf_model, tokenizer=tokenizer, batch_size=batch_size)
                 
-            #task_manager = lm_eval.tasks.TaskManager()
+                #task_manager = lm_eval.tasks.TaskManager()
 
-            results = lm_eval.simple_evaluate(
-                model=eval_model,
-                tasks=tasks,
-                #task_manager=task_manager,
-                limit=limit,
-                apply_chat_template=True,
-            )
-            except torch.cuda.OutOfMemoryError:
-                batch_size = batch_size // 2
+                results = lm_eval.simple_evaluate(
+                    model=eval_model,
+                    tasks=tasks,
+                    #task_manager=task_manager,
+                    limit=limit,
+                    apply_chat_template=True,
+                )
+            except Exception as e:
+                if isinstance(e, torch.cuda.OutOfMemoryError):
+                    batch_size = batch_size // 2
+                    print(f"Error: {e}. Retrying with batch size {batch_size}")
+                else:
+                    raise e
                 if batch_size < 1:
-                    raise torch.cuda.OutOfMemoryError
-                print(f"Error: {torch.cuda.OutOfMemoryError}. Retrying with batch size {batch_size}")
+                    raise Exception("Batch size of 1 still causes out of memory error. Stopping evaluation.")
                 continue
             break
     
