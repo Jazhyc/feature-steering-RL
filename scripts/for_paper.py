@@ -1,5 +1,5 @@
 """
-python scripts/for_paper.py --print_results 2>&1 | tee scripts/logs/eval-log.txt
+python scripts/for_paper.py --print_results 2>&1 | tee eval-log.txt
 """
 import sys
 import os
@@ -18,9 +18,19 @@ def main():
     parser.add_argument("--tasks", nargs="+", default=tasks)
     parser.add_argument("--limit", type=float, default=1.0)
     parser.add_argument("--print_results", action="store_true")
+    parser.add_argument("--with_adapter", action="store_true")
     args = parser.parse_args()
 
-    results = run_eval(args.runs, args.tasks, limit=args.limit)
+    print("Args:")
+    for key, value in vars(args).items():
+        print(f"{key}: {value}")
+
+    if args.limit == 0 or args.limit >= 1.0:
+        limit = None
+    else:
+        limit = args.limit
+
+    results = run_eval(args.runs, args.tasks, limit=limit, with_adapter=args.with_adapter)
     if args.print_results:
         pretty_results(results)
 
