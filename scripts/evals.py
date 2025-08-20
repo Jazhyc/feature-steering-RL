@@ -2,6 +2,7 @@ import os
 import lm_eval
 import torch
 import wandb
+import json
 from dotenv import load_dotenv
 from pathlib import Path
 from fsrl import SAEAdapter, HookedModel
@@ -59,9 +60,18 @@ def run_eval(runs, tasks, limit=0.01):
             apply_chat_template=True,
         )
     
-        full_results[run] = results
+        full_results[run] = results["results"]
 
-    wandb.log(full_results)
+    # Save results as a JSON file and upload as WandB artifact
+    results_file = "eval_results.json"
+    with open(results_file, 'w') as f:
+        json.dump(full_results, f, indent=2)
+    
+    artifact = wandb.Artifact("eval_results", type="results")
+    artifact.add_file(results_file)
+    wandb.log_artifact(artifact)
+    wandb.log(full_results) # for dashboard viewing
+    os.remove(results_file)
 
     return full_results
 
