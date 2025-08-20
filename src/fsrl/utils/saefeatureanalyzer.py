@@ -1,3 +1,4 @@
+import json
 from typing import Tuple
 from fsrl.hooked_model import HookedModel
 from fsrl.sae_adapter import SAEAdapter
@@ -48,6 +49,16 @@ class SAEfeatureAnalyzer:
         self._collect_feature_labels()
 
         self.cached_feature_logit_distr = None
+
+    def load_feature_labels(self, json_file: str) -> None:
+        with open(json_file, "r") as f:
+            parsed = json.load(f)
+
+        # code duplication bad
+        for explanation in parsed:
+            feature_idx = int(explanation["index"])
+            # Store the entire explanation object, which includes the 'description' field.
+            self.feature_info[feature_idx] = explanation
 
     def _collect_feature_labels(self) -> None:
         """
@@ -102,7 +113,8 @@ class SAEfeatureAnalyzer:
 
         return IFrame(html, width=1200, height=600)
 
-    def get_steered_features_info(self, steering_vector: torch.Tensor, threshold: float = 1e-3, top_k: int | None = None) -> Tuple[pd.DataFrame, go.Figure]:
+    def get_steered_features_info(self, steering_vector: torch.Tensor, threshold: float = 1e-3, top_k: int | None = None,
+                                  title: str = "Steering Vector", x_label: str = "steering value", x_max=None) -> Tuple[pd.DataFrame, go.Figure]:
         """
         Given a steering vector (torch.Tensor), return a DataFrame
         containing info about SAE features that are significantly steered.
@@ -147,9 +159,9 @@ class SAEfeatureAnalyzer:
         if top_k is not None:
             df = df.head(top_k)
 
-        return df, self._plot_steering_value_distribution(df)
+        return df, self._plot_steering_value_distribution(title, x_label, df, x_max)
     
-    def _plot_steering_value_distribution(self, df: pd.DataFrame) -> go.Figure:
+    def _plot_steering_value_distribution(self, title: str, x_label: str, df: pd.DataFrame, x_max=None) -> go.Figure:
         """
         Given a DataFrame with at least columns: 'steering_value', 'feature_idx', 'description',
         plot a detailed interactive distribution visualization.
@@ -171,7 +183,7 @@ class SAEfeatureAnalyzer:
         # Histogram
         fig.add_trace(go.Histogram(
             x=steering_values,
-            nbinsx=40,
+            nbinsx=100,
             marker_color='lightgrey',
             name="Histogram",
             opacity=0.6,
@@ -206,15 +218,20 @@ class SAEfeatureAnalyzer:
         ))
 
         # Layout tweaks
-        fig.update_layout(
-            title="Steering Vector Distribution (Histogram + KDE + Rug Plot)",
-            xaxis_title="Steering Value",
+        layout_kwargs = dict(
+            title=title,
+            xaxis_title=x_label,
             yaxis_title="Density",
             bargap=0.2,
             height=450,
-            width=900,
+            width=800,
             hovermode="closest",
         )
+
+        if x_max is not None:
+            layout_kwargs["xaxis"] = dict(range=[steering_values.min(), x_max])
+
+        fig.update_layout(**layout_kwargs)
 
         return fig
 
