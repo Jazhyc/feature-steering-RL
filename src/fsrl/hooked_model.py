@@ -191,6 +191,49 @@ class BaseHookedModel(nn.Module):
     
     def generate(self, *args, **kwargs):
         """Generates text using the model's generate method."""
+        # Handle parameter compatibility with lm-eval
+        if 'input_ids' in kwargs:
+            input_ids = kwargs.pop('input_ids')
+            # If no positional args were provided, use input_ids as the input
+            if len(args) == 0:
+                args = (input_ids,)
+            # If input was already provided as positional arg, keep it
+        
+        # Map Hugging Face parameter names to HookedTransformer parameter names
+        if 'max_length' in kwargs:
+            max_length = kwargs.pop('max_length')
+            # HookedTransformer uses max_new_tokens instead of max_length
+            # We need to calculate max_new_tokens from max_length and input length
+            if len(args) > 0:
+                input_length = args[0].shape[-1] if hasattr(args[0], 'shape') else len(args[0])
+                kwargs['max_new_tokens'] = max(1, max_length - input_length)
+            else:
+                kwargs['max_new_tokens'] = max_length
+        
+        # Map other common parameter differences
+        if 'num_return_sequences' in kwargs:
+            # HookedTransformer doesn't support this, remove it
+            kwargs.pop('num_return_sequences')
+        
+        if 'pad_token_id' in kwargs:
+            # HookedTransformer doesn't use this parameter
+            kwargs.pop('pad_token_id')
+        
+        if 'attention_mask' in kwargs:
+            # HookedTransformer doesn't use attention_mask
+            kwargs.pop('attention_mask')
+        
+        if 'stopping_criteria' in kwargs:
+            # HookedTransformer doesn't use stopping_criteria
+            kwargs.pop('stopping_criteria')
+        
+        if 'use_cache' in kwargs:
+            # HookedTransformer doesn't use use_cache (it has use_past_kv_cache instead)
+            use_cache = kwargs.pop('use_cache')
+            # Map to HookedTransformer equivalent if needed
+            if use_cache and 'use_past_kv_cache' not in kwargs:
+                kwargs['use_past_kv_cache'] = use_cache
+            
         return self.model.generate(*args, **kwargs)
     
     def tie_weights(self):
