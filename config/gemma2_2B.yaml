@@ -6,7 +6,7 @@ defaults:
   - _self_
 
 # Model saving configuration
-models_dir: "models/Gemma2_2B-clean"
+models_dir: "models/Gemma2-2B-clean"
 
 # Override any settings here if needed
 hydra:
