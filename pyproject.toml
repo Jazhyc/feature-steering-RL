@@ -22,6 +22,7 @@ dependencies = [
     "markupsafe==2.1.5",
     "bitsandbytes>=0.46.1",
     "seaborn>=0.13.2",
+    "kaleido==0.2.1",
 ]
 [build-system]
 requires = ["setuptools"]
