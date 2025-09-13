@@ -195,11 +195,11 @@ class SAEAdapter(SAE):
     def get_steering_vector(self, adapter_input: torch.Tensor) -> torch.Tensor:
         """Computes the steering vector from the trainable adapter."""
         
-        # Ensures adapter receives same input as regular SAE
-        adapter_input = adapter_input - (self.b_dec * self.cfg.apply_b_dec_to_input)
+        # Apply the same preprocessing as the main SAE to ensure consistency
+        processed_input = self.process_sae_in(adapter_input)
         
         # Get pre-activations from linear layer
-        pre_activations = self.adapter_linear(adapter_input.to(self.dtype))
+        pre_activations = self.adapter_linear(processed_input.to(self.dtype))
         
         # Apply the appropriate activation function
         if self.activation_type == "jump_relu":
