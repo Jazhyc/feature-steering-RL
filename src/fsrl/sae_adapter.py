@@ -221,41 +221,8 @@ class SAEAdapter(SAE):
         
         return steered_activations
 
-    def _forward_training(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Optimized forward pass for training.
-        
-        Directly adds decoded steering vector to input, avoiding expensive
-        SAE feature computation and reconstruction error calculation.
-        
-        Args:
-            x: Input tensor
-            
-        Returns:
-            Output tensor with steering applied
-        """
-        # Adapter Path (Trainable)
-        steering_vector = self.get_steering_vector(x)
-        
-        # Decode steering vector and add directly to input
-        # Since decoding is linear: decode(features + steering) = decode(features) + decode(steering)
-        decoded_steering = self.decode(steering_vector)
-        
-        return self.hook_sae_output(x + decoded_steering)
-
-    def _forward_inference(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Full forward pass for inference with complete feature computation.
-        
-        Maintains all hooks and intermediate computations for interpretability
-        and feature analysis.
-        
-        Args:
-            x: Input tensor
-            
-        Returns:
-            Output tensor with steering applied and all hooks preserved
-        """
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass: modulates SAE features with the adapter's steering vector."""
         # SAE Path (Frozen)
         # The feature vector can be very large
         feature_acts = self.encode(x)
@@ -281,13 +248,6 @@ class SAEAdapter(SAE):
             sae_out = sae_out + sae_error
             
         return self.hook_sae_output(sae_out)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Forward pass: modulates SAE features with the adapter's steering vector."""
-        if self.training:
-            return self._forward_training(x)
-        else:
-            return self._forward_inference(x)
 
     @classmethod
     def from_pretrained(
