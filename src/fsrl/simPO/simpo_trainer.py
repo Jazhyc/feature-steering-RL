@@ -819,11 +819,6 @@ class SimPOTrainer(Trainer):
             loss += l1_norm_penalty
             metrics[f"{prefix}steering_vector/l1_penalty"] = l1_norm_penalty.detach().cpu()
 
-        if self.l2_act_coeff > 0:
-            l2_norm_penalty = l2_norm * self.l2_act_coeff * penalty_factor
-            loss += l2_norm_penalty
-            metrics[f"{prefix}steering_vector/l2_penalty"] = l2_norm_penalty.detach().cpu()
-
         # Log steering vector statistics for interpretability analysis
         metrics[f"{prefix}steering_vector/l0_norm_sparsity"] = l0_norm.detach().cpu()
         metrics[f"{prefix}steering_vector/l1_norm_magnitude"] = l1_norm.detach().cpu()
