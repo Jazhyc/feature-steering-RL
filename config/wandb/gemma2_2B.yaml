@@ -1,5 +1,5 @@
 # Weights & Biases Configuration
-project: "Gemma2-2B-clean"
+project: "Gemma2-2B-new-arch"
 entity: "feature-steering-RL"
 dir: "logs"
 
