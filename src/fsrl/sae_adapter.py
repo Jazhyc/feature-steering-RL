@@ -42,24 +42,27 @@ class SAEAdapter(SAE):
         self.adapter_linear = nn.Linear(self.cfg.d_in, self.cfg.d_sae, bias=True)
         
         # Activation function configuration
-        self.use_jump_relu = kwargs.get("use_jump_relu", False)
+        self.activation_type = kwargs.get("activation_type", "soft_threshold")  # Default to soft threshold
         
-        # JumpReLU specific parameters (only used if use_jump_relu is True)
-        if self.use_jump_relu:
+        # Set up activation-specific parameters
+        if self.activation_type == "jump_relu":
             initial_threshold = kwargs.get("initial_threshold", 0.001)
             self.bandwidth = kwargs.get("bandwidth", 0.001)
             self.log_threshold = nn.Parameter(
                 torch.full((self.cfg.d_sae,), torch.log(torch.tensor(initial_threshold)), dtype=torch.float32)
             )
-        else:
-            self.bandwidth = None
-            self.log_threshold = None
+        elif self.activation_type == "soft_threshold":
+            initial_threshold = kwargs.get("initial_threshold", 0.01)  # Default to 1e-2
+            self.soft_threshold = nn.Parameter(
+                torch.full((self.cfg.d_sae,), initial_threshold)
+            )
+        # For "relu", no additional parameters needed
 
         self._initialize_adapter()
         self.to(self.device, self.dtype)
         
-        # Ensure log_threshold stays in fp32 for numerical stability (only if using JumpReLU)
-        if self.use_jump_relu:
+        # Ensure log_threshold stays in fp32 for numerical stability (only JumpReLU needs this)
+        if self.activation_type == "jump_relu":
             self.log_threshold.data = self.log_threshold.data.to(torch.float32)
 
         # Registers for logging and auxiliary losses
@@ -81,22 +84,24 @@ class SAEAdapter(SAE):
     @property
     def adapter_threshold(self) -> torch.Tensor:
         """Computes the threshold from the learnable log_threshold (only for JumpReLU)."""
-        if self.use_jump_relu:
+        if self.activation_type == "jump_relu":
             return torch.exp(self.log_threshold)
         else:
             return None
     
     def to(self, *args, **kwargs):
-        """Override to method to keep log_threshold in fp32 (only if using JumpReLU)."""
-        # Store the original log_threshold to avoid dtype conversion
+        """Override to method to keep log_threshold in fp32 for numerical stability (JumpReLU only)."""
+        # Store the original log_threshold to avoid dtype conversion (only JumpReLU needs fp32)
+        original_log_threshold = None
+        
         if hasattr(self, 'log_threshold') and self.log_threshold is not None:
             original_log_threshold = self.log_threshold.data.clone()
         
         # Call parent's to method
         result = super().to(*args, **kwargs)
         
-        # Restore log_threshold to fp32 without any intermediate conversions
-        if hasattr(self, 'log_threshold') and self.log_threshold is not None:
+        # Restore log_threshold to fp32 without any intermediate conversions (JumpReLU only)
+        if original_log_threshold is not None:
             device = self.adapter_linear.weight.device
             self.log_threshold.data = original_log_threshold.to(device)
 
@@ -106,16 +111,17 @@ class SAEAdapter(SAE):
         """
         A simple initialization for the adapter weights and bias.
         For JumpReLU: biases are initialized to the initial threshold
+        For soft threshold: biases are initialized to zero (threshold is separate)
         For ReLU: biases are initialized to zero
         """
         nn.init.uniform_(self.adapter_linear.weight, a=-1e-9, b=1e-9)
 
-        if self.use_jump_relu:
+        if self.activation_type == "jump_relu":
             # Use the threshold value but ensure it matches the bias dtype
             threshold_mean = self.adapter_threshold.mean().item()
             nn.init.constant_(self.adapter_linear.bias, threshold_mean)
         else:
-            # Initialize bias to zero for regular ReLU
+            # Initialize bias to zero for soft threshold and regular ReLU
             nn.init.constant_(self.adapter_linear.bias, 0.0)
 
     def _apply_topk_feature_selection(
@@ -145,6 +151,47 @@ class SAEAdapter(SAE):
         masked_activations = steered_activations * mask
         return masked_activations, mask
 
+    def _apply_jump_relu_activation(self, pre_activations: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """Apply JumpReLU activation with learnable threshold and bandwidth."""
+        # Apply ReLU first, then threshold and bandwidth
+        relu_activations = F.relu(pre_activations)
+        threshold_tensor = self.adapter_threshold.to(relu_activations.dtype)
+        bandwidth_tensor = torch.tensor(self.bandwidth, dtype=relu_activations.dtype, device=relu_activations.device)
+
+        steered_activations = JumpReLU.apply(relu_activations, threshold_tensor, bandwidth_tensor)
+        sparsity_mask = Step.apply(relu_activations, threshold_tensor, bandwidth_tensor)
+        
+        return steered_activations, sparsity_mask
+
+    def _apply_soft_threshold_activation(self, pre_activations: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """Apply soft threshold activation: sign(x) * ReLU(|x| - threshold)."""
+        threshold_tensor = self.soft_threshold.to(pre_activations.dtype)
+        steered_activations = torch.sign(pre_activations) * F.relu(torch.abs(pre_activations) - threshold_tensor)
+        
+        # Sparsity mask: active when |pre_activation| > threshold
+        sparsity_mask = (torch.abs(pre_activations) > threshold_tensor).float()
+        
+        return steered_activations, sparsity_mask
+
+    def _apply_relu_activation(self, pre_activations: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """Apply standard ReLU activation."""
+        steered_activations = F.relu(pre_activations)
+        
+        # For regular ReLU, L0 norm is calculated from non-zero steered activations
+        sparsity_mask = (steered_activations > 0).float()
+        
+        return steered_activations, sparsity_mask
+
+    def _compute_statistics(self, steered_activations: torch.Tensor, sparsity_mask: torch.Tensor) -> None:
+        """Compute and store L0, L1, and L2 norms for logging."""
+        # L0 is count of non-zero active features after any masking
+        self._norm_l0 = torch.sum(sparsity_mask, dim=-1).mean()
+
+        # Statistics for loss and logging
+        # L1 and L2 norms: mean of norms across batch (sum over features, mean over batch)
+        self._norm_l1 = torch.mean(torch.sum(torch.abs(steered_activations), dim=-1))
+        self._norm_l2 = torch.mean(torch.sum(steered_activations**2, dim=-1))
+
     def get_steering_vector(self, adapter_input: torch.Tensor) -> torch.Tensor:
         """Computes the steering vector from the trainable adapter."""
         
@@ -154,22 +201,18 @@ class SAEAdapter(SAE):
         # Get pre-activations from linear layer
         pre_activations = self.adapter_linear(adapter_input.to(self.dtype))
         
-        # Apply relu first (common to both activation functions)
-        pre_activations = F.relu(pre_activations)
-
-        if self.use_jump_relu:
-            # JumpReLU path - use threshold and bandwidth
-            threshold_tensor = self.adapter_threshold.to(pre_activations.dtype)
-            bandwidth_tensor = torch.tensor(self.bandwidth, dtype=pre_activations.dtype, device=pre_activations.device)
-
-            steered_activations = JumpReLU.apply(pre_activations, threshold_tensor, bandwidth_tensor)
-            sparsity_mask = Step.apply(pre_activations, threshold_tensor, bandwidth_tensor)
-        else:
-            # Regular ReLU path - activations are already post-ReLU
-            steered_activations = pre_activations
+        # Apply the appropriate activation function
+        if self.activation_type == "jump_relu":
+            steered_activations, sparsity_mask = self._apply_jump_relu_activation(pre_activations)
+        elif self.activation_type == "soft_threshold":
+            steered_activations, sparsity_mask = self._apply_soft_threshold_activation(pre_activations)
             
-            # For regular ReLU, L0 norm is calculated from non-zero steered activations
-            sparsity_mask = (steered_activations > 0).float()
+            # print number of negative values
+            num_negatives = torch.sum(steered_activations < 0).item()
+            print(f"Number of negative values (soft_threshold): {num_negatives}")
+
+        else:  # activation_type == "relu"
+            steered_activations, sparsity_mask = self._apply_relu_activation(pre_activations)
             
         # Optionally restrict to top-k features by absolute value (per item)
         if 0.0 < getattr(self, "steering_fraction", 1.0) < 1.0:
@@ -177,15 +220,9 @@ class SAEAdapter(SAE):
                 steered_activations, self.steering_fraction
             )
 
-        # L0 is count of non-zero active features after any masking
-        self._norm_l0 = torch.sum(sparsity_mask, dim=-1).mean()
-
+        # Apply hook and compute statistics
         steered_activations = self.hook_sae_adapter(steered_activations)
-
-        # Statistics for loss and logging
-        # L1 and L2 norms: mean of norms across batch (sum over features, mean over batch)
-        self._norm_l1 = torch.mean(torch.sum(torch.abs(steered_activations), dim=-1))
-        self._norm_l2 = torch.mean(torch.sum(steered_activations**2, dim=-1))
+        self._compute_statistics(steered_activations, sparsity_mask)
         
         return steered_activations
 
@@ -291,8 +328,10 @@ class SAEAdapter(SAE):
     def get_trainable_parameters(self) -> list[nn.Parameter]:
         """Returns the adapter's trainable parameters for an optimizer."""
         params = [self.adapter_linear.weight, self.adapter_linear.bias]
-        if self.use_jump_relu:
+        if self.activation_type == "jump_relu":
             params.append(self.log_threshold)
+        elif self.activation_type == "soft_threshold":
+            params.append(self.soft_threshold)
         return params
 
     def get_norms(self) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -317,20 +356,22 @@ class SAEAdapter(SAE):
             'adapter_linear.bias': self.adapter_linear.bias,
         }
         
-        # Only save log_threshold if using JumpReLU
-        if self.use_jump_relu:
+        # Save threshold parameters based on activation type
+        if self.activation_type == "jump_relu":
             adapter_state_dict['log_threshold'] = self.log_threshold
+        elif self.activation_type == "soft_threshold":
+            adapter_state_dict['soft_threshold'] = self.soft_threshold
         
         save_file(adapter_state_dict, path / "adapter_weights.safetensors")
 
         adapter_config = {
             "base_sae_release": self.cfg.release,
             "base_sae_id": self.cfg.sae_id,
-            "use_jump_relu": self.use_jump_relu,
+            "activation_type": self.activation_type,
         }
         
-        # Save JumpReLU specific config if used
-        if self.use_jump_relu:
+        # Save activation-specific config
+        if self.activation_type == "jump_relu":
             adapter_config["bandwidth"] = self.bandwidth
             
         with open(path / CUSTOM_CONFIG_NAME, 'w') as f:
@@ -352,13 +393,21 @@ class SAEAdapter(SAE):
             config = json.load(f)
 
         # Extract adapter kwargs from config
-        adapter_kwargs = {
-            "use_jump_relu": config.get("use_jump_relu", False)
-        }
+        activation_type = config.get("activation_type", "soft_threshold")  # Default to soft threshold
         
-        if adapter_kwargs["use_jump_relu"]:
+        # Legacy support for old boolean flags
+        if config.get("use_jump_relu", False):
+            activation_type = "jump_relu"
+        elif config.get("use_soft_threshold", False):
+            activation_type = "soft_threshold"
+        
+        adapter_kwargs = {"activation_type": activation_type}
+        
+        if activation_type == "jump_relu":
             adapter_kwargs["bandwidth"] = config.get("bandwidth", 0.001)
             adapter_kwargs["initial_threshold"] = config.get("initial_threshold", 0.001)
+        elif activation_type == "soft_threshold":
+            adapter_kwargs["initial_threshold"] = config.get("initial_threshold", 0.01)
 
         # Create the full model instance by calling our own from_pretrained
         instance, _, _ = cls.from_pretrained(
@@ -376,9 +425,11 @@ class SAEAdapter(SAE):
         instance.adapter_linear.weight.data = state_dict['adapter_linear.weight']
         instance.adapter_linear.bias.data = state_dict['adapter_linear.bias']
         
-        # Only load log_threshold if it exists in the state dict (for JumpReLU)
+        # Load threshold parameters based on what's in the state dict
         if 'log_threshold' in state_dict:
             instance.log_threshold.data = state_dict['log_threshold']
+        elif 'soft_threshold' in state_dict:
+            instance.soft_threshold.data = state_dict['soft_threshold']
         
         print(f"Adapter loaded from {path}")
         return instance
