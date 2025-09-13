@@ -8,7 +8,7 @@ sae:
   release: "gpt2-small-res-jb"
   sae_id: "blocks.7.hook_resid_pre"
   activation_type: "soft_threshold"  # Options: "soft_threshold", "jump_relu", "relu"
-  initial_threshold: 0.01  # Used for both soft_threshold and jump_relu
+  initial_threshold: 1e-6  # Used for both soft_threshold and jump_relu
   bandwidth: 0.05  # Only used for jump_relu
   dtype: "bfloat16"
 

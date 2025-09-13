@@ -52,7 +52,7 @@ class SAEAdapter(SAE):
                 torch.full((self.cfg.d_sae,), torch.log(torch.tensor(initial_threshold)), dtype=torch.float32)
             )
         elif self.activation_type == "soft_threshold":
-            initial_threshold = kwargs.get("initial_threshold", 0.01)  # Default to 1e-2
+            initial_threshold = kwargs.get("initial_threshold", 1e-6)
             self.soft_threshold = nn.Parameter(
                 torch.full((self.cfg.d_sae,), initial_threshold)
             )
@@ -114,7 +114,7 @@ class SAEAdapter(SAE):
         For soft threshold: biases are initialized to zero (threshold is separate)
         For ReLU: biases are initialized to zero
         """
-        nn.init.uniform_(self.adapter_linear.weight, a=-1e-9, b=1e-9)
+        nn.init.uniform_(self.adapter_linear.weight, a=-1e-6, b=1e-6)
 
         if self.activation_type == "jump_relu":
             # Use the threshold value but ensure it matches the bias dtype
@@ -206,11 +206,6 @@ class SAEAdapter(SAE):
             steered_activations, sparsity_mask = self._apply_jump_relu_activation(pre_activations)
         elif self.activation_type == "soft_threshold":
             steered_activations, sparsity_mask = self._apply_soft_threshold_activation(pre_activations)
-            
-            # print number of negative values
-            num_negatives = torch.sum(steered_activations < 0).item()
-            print(f"Number of negative values (soft_threshold): {num_negatives}")
-
         else:  # activation_type == "relu"
             steered_activations, sparsity_mask = self._apply_relu_activation(pre_activations)
             
