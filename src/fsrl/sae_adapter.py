@@ -118,6 +118,33 @@ class SAEAdapter(SAE):
             # Initialize bias to zero for regular ReLU
             nn.init.constant_(self.adapter_linear.bias, 0.0)
 
+    def _apply_topk_feature_selection(
+        self, 
+        steered_activations: torch.Tensor, 
+        steering_fraction: float
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """
+        Apply top-k feature selection to steering vector based on absolute values.
+        
+        Args:
+            steered_activations: The steering activations tensor [batch_size, d_sae]
+            steering_fraction: Fraction of features to keep (0.0, 1.0]
+            
+        Returns:
+            Tuple of (masked_activations, sparsity_mask)
+        """
+        d = steered_activations.shape[-1]
+        k = max(1, int(d * float(steering_fraction)))
+        
+        # Compute top-k indices by absolute value
+        with torch.no_grad():
+            topk = torch.topk(steered_activations.abs(), k=k, dim=-1, largest=True, sorted=False)
+            mask = torch.zeros_like(steered_activations, dtype=steered_activations.dtype)
+            mask.scatter_(-1, topk.indices, 1.0)
+        
+        masked_activations = steered_activations * mask
+        return masked_activations, mask
+
     def get_steering_vector(self, adapter_input: torch.Tensor) -> torch.Tensor:
         """Computes the steering vector from the trainable adapter."""
         
@@ -146,15 +173,9 @@ class SAEAdapter(SAE):
             
         # Optionally restrict to top-k features by absolute value (per item)
         if 0.0 < getattr(self, "steering_fraction", 1.0) < 1.0:
-            d = steered_activations.shape[-1]
-            k = max(1, int(d * float(self.steering_fraction)))
-            # Compute top-k indices by absolute value
-            with torch.no_grad():
-                topk = torch.topk(steered_activations.abs(), k=k, dim=-1, largest=True, sorted=False)
-                mask = torch.zeros_like(steered_activations, dtype=steered_activations.dtype)
-                mask.scatter_(-1, topk.indices, 1.0)
-            steered_activations = steered_activations * mask
-            sparsity_mask = mask
+            steered_activations, sparsity_mask = self._apply_topk_feature_selection(
+                steered_activations, self.steering_fraction
+            )
 
         # L0 is count of non-zero active features after any masking
         self._norm_l0 = torch.sum(sparsity_mask, dim=-1).mean()
@@ -168,9 +189,41 @@ class SAEAdapter(SAE):
         
         return steered_activations
 
-    def _forward_no_checkpoint(self, x: torch.Tensor) -> torch.Tensor:
-        """Forward pass: modulates SAE features with the adapter's steering vector."""
+    def _forward_training(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Optimized forward pass for training.
         
+        Directly adds decoded steering vector to input, avoiding expensive
+        SAE feature computation and reconstruction error calculation.
+        
+        Args:
+            x: Input tensor
+            
+        Returns:
+            Output tensor with steering applied
+        """
+        # Adapter Path (Trainable)
+        steering_vector = self.get_steering_vector(x)
+        
+        # Decode steering vector and add directly to input
+        # Since decoding is linear: decode(features + steering) = decode(features) + decode(steering)
+        decoded_steering = self.decode(steering_vector)
+        
+        return self.hook_sae_output(x + decoded_steering)
+
+    def _forward_inference(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Full forward pass for inference with complete feature computation.
+        
+        Maintains all hooks and intermediate computations for interpretability
+        and feature analysis.
+        
+        Args:
+            x: Input tensor
+            
+        Returns:
+            Output tensor with steering applied and all hooks preserved
+        """
         # SAE Path (Frozen)
         # The feature vector can be very large
         feature_acts = self.encode(x)
@@ -193,16 +246,16 @@ class SAEAdapter(SAE):
         sae_out = self.decode(fused_feature_acts)
         
         if self.use_error_term:
-            sae_out.add_(sae_error)
+            sae_out = sae_out + sae_error
             
         return self.hook_sae_output(sae_out)
-    
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Forward pass with optional gradient checkpointing.
-        Modulates SAE features with the adapter's steering vector.
-        """
-        return self._forward_no_checkpoint(x)
+        """Forward pass: modulates SAE features with the adapter's steering vector."""
+        if self.training:
+            return self._forward_training(x)
+        else:
+            return self._forward_inference(x)
 
     @classmethod
     def from_pretrained(

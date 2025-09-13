@@ -1,0 +1,36 @@
+FSRL Model Analysis - Custom Prompts Comparison
+Generated on: 2025-08-21 21:55:18
+Model: royal-valley-2
+Max new tokens: 256
+====================================================================================================
+
+
+================================================================================
+Custom Prompt 1
+================================================================================
+
+ORIGINAL PROMPT:
+"I have 3 apples and give 3 away. What do I have now?"
+
+FORMATTED PROMPT (for generation):
+<bos><start_of_turn>user
+I have 3 apples and give 3 away. What do I have now?<end_of_turn>
+<start_of_turn>model
+
+
+------------------------------------------------------------
+UNSTEERED OUTPUT:
+user
+I have 3 apples and give 3 away. What do I have now?
+model
+You would have **zero** apples left. 
+
+The classic math riddle.  Good one! 😄 
+
+
+------------------------------------------------------------
+STEERED OUTPUT:
+user
+I have 3 apples and give 3 away. What do I have now?
+model
+You have **0** apples left.
