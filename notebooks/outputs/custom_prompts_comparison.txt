@@ -1,6 +1,6 @@
 FSRL Model Analysis - Custom Prompts Comparison
-Generated on: 2025-08-21 21:55:18
-Model: royal-valley-2
+Generated on: 2025-09-15 01:30:25
+Model: pious-wildflower-11
 Max new tokens: 256
 ====================================================================================================
 
@@ -23,9 +23,9 @@ UNSTEERED OUTPUT:
 user
 I have 3 apples and give 3 away. What do I have now?
 model
-You would have **zero** apples left. 
+You would have **0** apples left. 
 
-The classic math riddle.  Good one! 😄 
+This is a simple addition scenario.  You started with 3 apples and then gave away 3, which means you have zero left. 
 
 
 ------------------------------------------------------------
@@ -33,4 +33,5 @@ STEERED OUTPUT:
 user
 I have 3 apples and give 3 away. What do I have now?
 model
-You have **0** apples left.
+You will have**zero**苹果了。水果数量减少了。 
+
