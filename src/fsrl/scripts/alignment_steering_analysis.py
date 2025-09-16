@@ -490,87 +490,96 @@ def analyze_steering_features(
             sae_feature_mean = new_mean_sae
             sae_feature_m2 = new_m2_sae
 
-            # Convert to CPU/NumPy only for the classification analysis that needs it
-            adapter_activations_cpu = adapter_activations.cpu().numpy()
-            sae_activations_cpu = sae_activations.cpu().numpy()
-
-            # For the actual CLASSIFICATION ANALYSIS, we correctly use the attention mask.
-            attention_mask = batch_tokens["attention_mask"].cpu().numpy()
-            if CONFIG["analysis"]["ignore_attention_mask"]:
-                effective_attention_mask = np.ones_like(attention_mask)
-            else:
-                effective_attention_mask = attention_mask
-            
-            feature_indices = np.arange(adapter_activations_cpu.shape[2])
+            # Convert classification masks to GPU tensors for maximum speed
+            device = adapter_activations.device
+            feature_indices = torch.arange(adapter_activations.shape[2], device=device)
             # Use new standardized labels: 'related' and 'not-related'
-            related_mask = np.array([feature_classifications.get(idx) == "related" for idx in feature_indices])
-            not_related_mask = np.array([feature_classifications.get(idx) == "not-related" for idx in feature_indices])
+            related_mask = torch.tensor([feature_classifications.get(idx.item()) == "related" for idx in feature_indices], 
+                                      device=device, dtype=torch.bool)
+            not_related_mask = torch.tensor([feature_classifications.get(idx.item()) == "not-related" for idx in feature_indices], 
+                                          device=device, dtype=torch.bool)
 
-            # Process adapter activations
-            for batch_idx in range(adapter_activations_cpu.shape[0]):
-                sample_len = int(effective_attention_mask[batch_idx].sum())
-                if sample_len == 0: 
+            # VECTORIZED GPU PROCESSING - Process all samples at once for massive speedup
+            batch_size_dim, seq_len, num_features = adapter_activations.shape
+            
+            # Create effective attention mask on GPU
+            attention_mask_gpu = batch_tokens["attention_mask"]
+            if CONFIG["analysis"]["ignore_attention_mask"]:
+                effective_mask = torch.ones((batch_size_dim, seq_len), device=device, dtype=torch.bool)
+            else:
+                effective_mask = attention_mask_gpu.bool()
+            
+            # Vectorized adapter processing on GPU
+            adapter_threshold_mask = (torch.abs(adapter_activations) > 1e-6)  # Shape: [batch, seq, features]
+            adapter_active_mask = adapter_threshold_mask & effective_mask[:, :, None]  # Apply attention mask
+            
+            # Count feature usage across all positions and samples (GPU)
+            adapter_usage_batch = torch.sum(adapter_active_mask, dim=(0, 1))  # Sum over batch and sequence
+            adapter_usage_counter += adapter_usage_batch.cpu().numpy().astype(int)
+            
+            # Find steered features across all samples (GPU)
+            adapter_any_active = torch.any(adapter_active_mask, dim=(0, 1))  # Features active anywhere
+            adapter_steered_features = torch.where(adapter_any_active)[0]
+            adapter_all_steered_features.extend(adapter_steered_features.cpu().tolist())
+            
+            # Classify steered features (GPU operations)
+            adapter_steered_related = adapter_steered_features[related_mask[adapter_steered_features]]
+            adapter_steered_not_related = adapter_steered_features[not_related_mask[adapter_steered_features]]
+            adapter_related_steered.extend(adapter_steered_related.cpu().tolist())
+            adapter_not_related_steered.extend(adapter_steered_not_related.cpu().tolist())
+            
+            # Position-wise analysis (only convert to CPU for final aggregation)
+            for batch_idx in range(batch_size_dim):
+                sample_len = int(effective_mask[batch_idx].sum().item())
+                if sample_len == 0:
                     continue
+                    
+                sample_mask = adapter_active_mask[batch_idx, :sample_len, :]
+                if torch.any(sample_mask):
+                    related_counts = torch.sum(sample_mask & related_mask[None, :], dim=1)
+                    not_related_counts = torch.sum(sample_mask & not_related_mask[None, :], dim=1)
+                    total_counts = related_counts + not_related_counts
+                    valid_pos = total_counts > 0
+                    if torch.any(valid_pos):
+                        ratios = related_counts[valid_pos].float() / total_counts[valid_pos].float()
+                        adapter_position_related_ratios.extend(ratios.cpu().tolist())
+                        adapter_position_total_steered.extend(total_counts[valid_pos].cpu().tolist())
 
-                sample_adapter = adapter_activations_cpu[batch_idx, :sample_len, :]
-                sample_adapter_mask = (np.abs(sample_adapter) > 1e-6)
-                
-                if np.any(sample_adapter_mask):
-                    related_counts = np.sum(sample_adapter_mask & related_mask[None, :], axis=1)
-                    not_related_counts = np.sum(sample_adapter_mask & not_related_mask[None, :], axis=1)
-                    total_classified_counts = related_counts + not_related_counts
-                    
-                    valid_positions = total_classified_counts > 0
-                    if np.any(valid_positions):
-                        position_ratios = related_counts[valid_positions] / total_classified_counts[valid_positions]
-                        adapter_position_related_ratios.extend(position_ratios.tolist())
-                        adapter_position_total_steered.extend(total_classified_counts[valid_positions].tolist())
-                    
-                    steered_features_in_sample = np.where(np.any(sample_adapter_mask, axis=0))[0]
-                    adapter_all_steered_features.extend(steered_features_in_sample.tolist())
-                    
-                    # Update feature usage counter for this sample
-                    feature_usage_in_sample = np.sum(sample_adapter_mask, axis=0)  # Shape: [num_features]
-                    adapter_usage_counter += feature_usage_in_sample.astype(int)
-                    
-                    steered_related_features = steered_features_in_sample[related_mask[steered_features_in_sample]]
-                    steered_not_related_features = steered_features_in_sample[not_related_mask[steered_features_in_sample]]
-                    
-                    adapter_related_steered.extend(steered_related_features.tolist())
-                    adapter_not_related_steered.extend(steered_not_related_features.tolist())
-
-            # Process SAE activations
-            for batch_idx in range(sae_activations_cpu.shape[0]):
-                sample_len = int(effective_attention_mask[batch_idx].sum())
-                if sample_len == 0: 
+            # VECTORIZED SAE PROCESSING ON GPU
+            sae_threshold_mask = (torch.abs(sae_activations) > 1e-6)
+            sae_active_mask = sae_threshold_mask & effective_mask[:, :, None]
+            
+            # Count feature usage across all positions and samples (GPU)
+            sae_usage_batch = torch.sum(sae_active_mask, dim=(0, 1))
+            sae_usage_counter += sae_usage_batch.cpu().numpy().astype(int)
+            
+            # Find active features across all samples (GPU)
+            sae_any_active = torch.any(sae_active_mask, dim=(0, 1))
+            sae_active_features = torch.where(sae_any_active)[0]
+            sae_all_active_features.extend(sae_active_features.cpu().tolist())
+            
+            # Classify active features (GPU operations)
+            sae_active_related = sae_active_features[related_mask[sae_active_features]]
+            sae_active_not_related = sae_active_features[not_related_mask[sae_active_features]]
+            sae_related_active.extend(sae_active_related.cpu().tolist())
+            sae_not_related_active.extend(sae_active_not_related.cpu().tolist())
+            
+            # Position-wise analysis for SAE (GPU operations)
+            for batch_idx in range(batch_size_dim):
+                sample_len = int(effective_mask[batch_idx].sum().item())
+                if sample_len == 0:
                     continue
-
-                sample_sae = sae_activations_cpu[batch_idx, :sample_len, :]
-                sample_sae_mask = (np.abs(sample_sae) > 1e-6)
-                
-                if np.any(sample_sae_mask):
-                    related_counts = np.sum(sample_sae_mask & related_mask[None, :], axis=1)
-                    not_related_counts = np.sum(sample_sae_mask & not_related_mask[None, :], axis=1)
-                    total_classified_counts = related_counts + not_related_counts
                     
-                    valid_positions = total_classified_counts > 0
-                    if np.any(valid_positions):
-                        position_ratios = related_counts[valid_positions] / total_classified_counts[valid_positions]
-                        sae_position_related_ratios.extend(position_ratios.tolist())
-                        sae_position_total_steered.extend(total_classified_counts[valid_positions].tolist())
-                    
-                    active_features_in_sample = np.where(np.any(sample_sae_mask, axis=0))[0]
-                    sae_all_active_features.extend(active_features_in_sample.tolist())
-                    
-                    # Update feature usage counter for this sample
-                    feature_usage_in_sample = np.sum(sample_sae_mask, axis=0)  # Shape: [num_features]
-                    sae_usage_counter += feature_usage_in_sample.astype(int)
-                    
-                    active_related_features = active_features_in_sample[related_mask[active_features_in_sample]]
-                    active_not_related_features = active_features_in_sample[not_related_mask[active_features_in_sample]]
-                    
-                    sae_related_active.extend(active_related_features.tolist())
-                    sae_not_related_active.extend(active_not_related_features.tolist())
+                sample_mask = sae_active_mask[batch_idx, :sample_len, :]
+                if torch.any(sample_mask):
+                    related_counts = torch.sum(sample_mask & related_mask[None, :], dim=1)
+                    not_related_counts = torch.sum(sample_mask & not_related_mask[None, :], dim=1)
+                    total_counts = related_counts + not_related_counts
+                    valid_pos = total_counts > 0
+                    if torch.any(valid_pos):
+                        ratios = related_counts[valid_pos].float() / total_counts[valid_pos].float()
+                        sae_position_related_ratios.extend(ratios.cpu().tolist())
+                        sae_position_total_steered.extend(total_counts[valid_pos].cpu().tolist())
     
     # Process results for adapter
     unique_adapter_steered = list(set(adapter_all_steered_features))
