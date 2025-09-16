@@ -589,16 +589,35 @@ def analyze_steering_features(
     l0_stderr_sae = float(l0_std_sae / np.sqrt(len(l0_norms_sae_array))) if len(l0_norms_sae_array) > 0 else 0.0
     
     # Calculate raw value statistics from per-feature statistics
+    # Convert GPU tensors to CPU/NumPy for statistics calculations
+    if adapter_feature_count is not None:
+        adapter_feature_count_cpu = adapter_feature_count.cpu().numpy()
+        adapter_feature_mean_cpu = adapter_feature_mean.cpu().numpy()
+        adapter_feature_m2_cpu = adapter_feature_m2.cpu().numpy()
+    else:
+        adapter_feature_count_cpu = None
+        adapter_feature_mean_cpu = None
+        adapter_feature_m2_cpu = None
+    
+    if sae_feature_count is not None:
+        sae_feature_count_cpu = sae_feature_count.cpu().numpy()
+        sae_feature_mean_cpu = sae_feature_mean.cpu().numpy()
+        sae_feature_m2_cpu = sae_feature_m2.cpu().numpy()
+    else:
+        sae_feature_count_cpu = None
+        sae_feature_mean_cpu = None
+        sae_feature_m2_cpu = None
+    
     # Compute global means as weighted average of per-feature means
-    if adapter_feature_count is not None and np.sum(adapter_feature_count) > 0:
+    if adapter_feature_count_cpu is not None and np.sum(adapter_feature_count_cpu) > 0:
         # Global mean is weighted average of per-feature means
-        total_adapter_count = np.sum(adapter_feature_count)
-        raw_mean_adapter = float(np.sum(adapter_feature_mean * adapter_feature_count) / total_adapter_count)
+        total_adapter_count = np.sum(adapter_feature_count_cpu)
+        raw_mean_adapter = float(np.sum(adapter_feature_mean_cpu * adapter_feature_count_cpu) / total_adapter_count)
         
         # For global variance, we need to combine per-feature variances
         # Using the formula for combining variances from multiple groups
-        feature_variances = np.where(adapter_feature_count > 0, adapter_feature_m2 / adapter_feature_count, 0.0)
-        mean_of_squares = np.sum(adapter_feature_count * (feature_variances + adapter_feature_mean**2)) / total_adapter_count
+        feature_variances = np.where(adapter_feature_count_cpu > 0, adapter_feature_m2_cpu / adapter_feature_count_cpu, 0.0)
+        mean_of_squares = np.sum(adapter_feature_count_cpu * (feature_variances + adapter_feature_mean_cpu**2)) / total_adapter_count
         raw_variance_adapter = mean_of_squares - raw_mean_adapter**2
         raw_std_adapter = float(np.sqrt(max(0, raw_variance_adapter)))
         raw_stderr_adapter = float(raw_std_adapter / np.sqrt(total_adapter_count))
@@ -607,14 +626,14 @@ def analyze_steering_features(
         raw_std_adapter = 0.0
         raw_stderr_adapter = 0.0
     
-    if sae_feature_count is not None and np.sum(sae_feature_count) > 0:
+    if sae_feature_count_cpu is not None and np.sum(sae_feature_count_cpu) > 0:
         # Global mean is weighted average of per-feature means
-        total_sae_count = np.sum(sae_feature_count)
-        raw_mean_sae = float(np.sum(sae_feature_mean * sae_feature_count) / total_sae_count)
+        total_sae_count = np.sum(sae_feature_count_cpu)
+        raw_mean_sae = float(np.sum(sae_feature_mean_cpu * sae_feature_count_cpu) / total_sae_count)
         
         # For global variance, we need to combine per-feature variances
-        feature_variances = np.where(sae_feature_count > 0, sae_feature_m2 / sae_feature_count, 0.0)
-        mean_of_squares = np.sum(sae_feature_count * (feature_variances + sae_feature_mean**2)) / total_sae_count
+        feature_variances = np.where(sae_feature_count_cpu > 0, sae_feature_m2_cpu / sae_feature_count_cpu, 0.0)
+        mean_of_squares = np.sum(sae_feature_count_cpu * (feature_variances + sae_feature_mean_cpu**2)) / total_sae_count
         raw_variance_sae = mean_of_squares - raw_mean_sae**2
         raw_std_sae = float(np.sqrt(max(0, raw_variance_sae)))
         raw_stderr_sae = float(raw_std_sae / np.sqrt(total_sae_count))
@@ -676,9 +695,9 @@ def analyze_steering_features(
             "raw_value_stderr": raw_stderr_adapter,
             "feature_usage_counter": adapter_usage_counter.tolist() if adapter_usage_counter is not None else [],
             "feature_statistics": {
-                "feature_count": adapter_feature_count.cpu().tolist() if adapter_feature_count is not None else [],
-                "feature_mean": adapter_feature_mean.cpu().tolist() if adapter_feature_mean is not None else [],
-                "feature_m2": adapter_feature_m2.cpu().tolist() if adapter_feature_m2 is not None else []
+                "feature_count": adapter_feature_count_cpu.tolist() if adapter_feature_count_cpu is not None else [],
+                "feature_mean": adapter_feature_mean_cpu.tolist() if adapter_feature_mean_cpu is not None else [],
+                "feature_m2": adapter_feature_m2_cpu.tolist() if adapter_feature_m2_cpu is not None else []
             }
         },
         "sae_regular": {
@@ -691,9 +710,9 @@ def analyze_steering_features(
             "raw_value_stderr": raw_stderr_sae,
             "feature_usage_counter": sae_usage_counter.tolist() if sae_usage_counter is not None else [],
             "feature_statistics": {
-                "feature_count": sae_feature_count.cpu().tolist() if sae_feature_count is not None else [],
-                "feature_mean": sae_feature_mean.cpu().tolist() if sae_feature_mean is not None else [],
-                "feature_m2": sae_feature_m2.cpu().tolist() if sae_feature_m2 is not None else []
+                "feature_count": sae_feature_count_cpu.tolist() if sae_feature_count_cpu is not None else [],
+                "feature_mean": sae_feature_mean_cpu.tolist() if sae_feature_mean_cpu is not None else [],
+                "feature_m2": sae_feature_m2_cpu.tolist() if sae_feature_m2_cpu is not None else []
             }
         }
     }
