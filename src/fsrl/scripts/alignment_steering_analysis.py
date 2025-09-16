@@ -431,12 +431,13 @@ def analyze_steering_features(
             
             # --- FIX 3: Replicate the trainer's naive L0 norm calculation ---
             # The trainer's metric is a simple mean over the whole tensor, including padding.
-            l0_per_position_batch_adapter = np.count_nonzero(np.abs(adapter_activations) > 1e-6, axis=-1)
-            batch_l0_mean_adapter = np.mean(l0_per_position_batch_adapter)
+            # Use PyTorch operations since tensors are still on GPU
+            l0_per_position_batch_adapter = torch.count_nonzero(torch.abs(adapter_activations) > 1e-6, dim=-1)
+            batch_l0_mean_adapter = float(torch.mean(l0_per_position_batch_adapter.float()))
             l0_norms_adapter.append(batch_l0_mean_adapter)
             
-            l0_per_position_batch_sae = np.count_nonzero(np.abs(sae_activations) > 1e-6, axis=-1)
-            batch_l0_mean_sae = np.mean(l0_per_position_batch_sae)
+            l0_per_position_batch_sae = torch.count_nonzero(torch.abs(sae_activations) > 1e-6, dim=-1)
+            batch_l0_mean_sae = float(torch.mean(l0_per_position_batch_sae.float()))
             l0_norms_sae.append(batch_l0_mean_sae)
 
             # Update per-feature raw value statistics using Welford's online algorithm
