@@ -61,8 +61,8 @@ CONFIG = {
 }
 
 # Default adapter paths - different for alignment vs formatting
-DEFAULT_ALIGNMENT_ADAPTER_PATH = "models/Gemma2-2B-clean/mild-glade-10/adapter"
-DEFAULT_FORMATTING_ADAPTER_PATH = "models/Gemma2-2B-clean/mild-glade-10/adapter"  # Update this when you have a formatting-trained model (OK?)
+DEFAULT_ALIGNMENT_ADAPTER_PATH = "models/Gemma2-2B-new-arch/pious-wildflower-11/adapter"
+DEFAULT_FORMATTING_ADAPTER_PATH = "models/Gemma2-2B-new-arch/pious-wildflower-11/adapter"  # Update this when you have a formatting-trained model (OK?)
 
 # Default classification file paths
 DEFAULT_ALIGNMENT_CLASSIFICATION_FILE = "outputs/feature_classification/gemma-2-2b/12-gemmascope-res-65k__l0-21_alignment_classified_deepseek-v3-0324.json"
