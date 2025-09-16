@@ -438,27 +438,28 @@ def analyze_steering_features(
             l0_norms_sae.append(batch_l0_mean_sae)
 
             # Update per-feature raw value statistics using Welford's online algorithm
-            # For adapter activations - process each feature separately
-            for batch_idx in range(adapter_activations.shape[0]):
-                for pos_idx in range(adapter_activations.shape[1]):
-                    for feature_idx in range(adapter_activations.shape[2]):
-                        value = adapter_activations[batch_idx, pos_idx, feature_idx]
-                        adapter_feature_count[feature_idx] += 1
-                        delta = value - adapter_feature_mean[feature_idx]
-                        adapter_feature_mean[feature_idx] += delta / adapter_feature_count[feature_idx]
-                        delta2 = value - adapter_feature_mean[feature_idx]
-                        adapter_feature_m2[feature_idx] += delta * delta2
+            # Vectorized implementation for massive speedup
             
-            # For SAE activations - process each feature separately
-            for batch_idx in range(sae_activations.shape[0]):
-                for pos_idx in range(sae_activations.shape[1]):
-                    for feature_idx in range(sae_activations.shape[2]):
-                        value = sae_activations[batch_idx, pos_idx, feature_idx]
-                        sae_feature_count[feature_idx] += 1
-                        delta = value - sae_feature_mean[feature_idx]
-                        sae_feature_mean[feature_idx] += delta / sae_feature_count[feature_idx]
-                        delta2 = value - sae_feature_mean[feature_idx]
-                        sae_feature_m2[feature_idx] += delta * delta2
+            # For adapter activations - vectorized Welford update
+            # Reshape to (total_positions, num_features) for easier processing
+            adapter_flat = adapter_activations.view(-1, adapter_activations.shape[2])  # (batch*seq, features)
+            
+            for value_vec in adapter_flat:  # Iterate over positions, not individual values
+                adapter_feature_count += 1
+                delta = value_vec - adapter_feature_mean
+                adapter_feature_mean += delta / adapter_feature_count
+                delta2 = value_vec - adapter_feature_mean
+                adapter_feature_m2 += delta * delta2
+            
+            # For SAE activations - vectorized Welford update
+            sae_flat = sae_activations.view(-1, sae_activations.shape[2])  # (batch*seq, features)
+            
+            for value_vec in sae_flat:  # Iterate over positions, not individual values
+                sae_feature_count += 1
+                delta = value_vec - sae_feature_mean
+                sae_feature_mean += delta / sae_feature_count
+                delta2 = value_vec - sae_feature_mean
+                sae_feature_m2 += delta * delta2
 
             # For the actual CLASSIFICATION ANALYSIS, we correctly use the attention mask.
             attention_mask = batch_tokens["attention_mask"].cpu().numpy()
