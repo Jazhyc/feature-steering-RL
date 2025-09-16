@@ -10,16 +10,16 @@ wandb:
 
 # For optional downloads via wandb_utils
 wandb_entity: feature-steering-RL
-wandb_project_family: Gemma2-2B-clean
+wandb_project_family: Gemma2-2B-new-arch
 # When auto_download=true, set the specific completed run name to fetch
-wandb_run_name: mild-glade-10
+wandb_run_name: pious-wildflower-11
 auto_download: true
 force_download: false
 
 # Fraction sweep schedule (geometric): start at 0.01, multiply by 5, cap at 0.1
 fraction_start: 0.001
 fraction_multiplier: 2.0
-fraction_max: 0.1
+fraction_max: 0.2
 
 architecture:
   use_sae: true

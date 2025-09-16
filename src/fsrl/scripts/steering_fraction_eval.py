@@ -135,7 +135,7 @@ def sweep_and_log(trainer: SimPOTrainer, model, fractions: List[float]):
     return results
 
 
-@hydra.main(version_base=None, config_path="../../config", config_name="steering_fraction_eval")
+@hydra.main(version_base=None, config_path="../../../config", config_name="steering_fraction_eval")
 def main(cfg: DictConfig) -> None:
     setup_env()
 
