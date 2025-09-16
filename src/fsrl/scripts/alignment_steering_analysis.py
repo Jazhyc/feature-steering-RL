@@ -442,7 +442,7 @@ def analyze_steering_features(
             
             # For adapter activations - vectorized Welford update
             # Reshape to (total_positions, num_features) for easier processing
-            adapter_flat = adapter_activations.view(-1, adapter_activations.shape[2])  # (batch*seq, features)
+            adapter_flat = adapter_activations.reshape(-1, adapter_activations.shape[2])  # (batch*seq, features)
             
             for value_vec in adapter_flat:  # Iterate over positions, not individual values
                 adapter_feature_count += 1
@@ -452,7 +452,7 @@ def analyze_steering_features(
                 adapter_feature_m2 += delta * delta2
             
             # For SAE activations - vectorized Welford update
-            sae_flat = sae_activations.view(-1, sae_activations.shape[2])  # (batch*seq, features)
+            sae_flat = sae_activations.reshape(-1, sae_activations.shape[2])  # (batch*seq, features)
             
             for value_vec in sae_flat:  # Iterate over positions, not individual values
                 sae_feature_count += 1
