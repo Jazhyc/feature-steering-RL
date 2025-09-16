@@ -401,14 +401,15 @@ def analyze_steering_features(
                 prepend_bos=False
             )
             
-            # Get both adapter and SAE activations
+            # Get both adapter and SAE activations - keep on GPU
             adapter_activations = llm_cache["blocks.12.hook_resid_post.hook_sae_adapter"]
             sae_activations = llm_cache["blocks.12.hook_resid_post.hook_sae_acts_post"]
             
+            # Keep as tensors for GPU computation, convert to float32 for consistency
             if isinstance(adapter_activations, torch.Tensor):
-                adapter_activations = adapter_activations.float().cpu().numpy()
+                adapter_activations = adapter_activations.float()
             if isinstance(sae_activations, torch.Tensor):
-                sae_activations = sae_activations.float().cpu().numpy()
+                sae_activations = sae_activations.float()
             
             # Initialize feature usage counters on first batch
             if adapter_usage_counter is None:
@@ -416,14 +417,15 @@ def analyze_steering_features(
                 adapter_usage_counter = np.zeros(num_features, dtype=int)
                 sae_usage_counter = np.zeros(num_features, dtype=int)
                 
-                # Initialize per-feature activation statistics
-                adapter_feature_count = np.zeros(num_features, dtype=int)
-                adapter_feature_mean = np.zeros(num_features, dtype=float)
-                adapter_feature_m2 = np.zeros(num_features, dtype=float)
+                # Initialize per-feature activation statistics on GPU
+                device = adapter_activations.device
+                adapter_feature_count = torch.zeros(num_features, dtype=torch.long, device=device)
+                adapter_feature_mean = torch.zeros(num_features, dtype=torch.float32, device=device)
+                adapter_feature_m2 = torch.zeros(num_features, dtype=torch.float32, device=device)
                 
-                sae_feature_count = np.zeros(num_features, dtype=int)
-                sae_feature_mean = np.zeros(num_features, dtype=float)
-                sae_feature_m2 = np.zeros(num_features, dtype=float)
+                sae_feature_count = torch.zeros(num_features, dtype=torch.long, device=device)
+                sae_feature_mean = torch.zeros(num_features, dtype=torch.float32, device=device)
+                sae_feature_m2 = torch.zeros(num_features, dtype=torch.float32, device=device)
                 
                 print(f"Tracking usage for {num_features} SAE features...")
             
@@ -438,28 +440,32 @@ def analyze_steering_features(
             l0_norms_sae.append(batch_l0_mean_sae)
 
             # Update per-feature raw value statistics using Welford's online algorithm
-            # Vectorized implementation for massive speedup
+            # Vectorized GPU implementation for maximum speed
             
-            # For adapter activations - vectorized Welford update
+            # For adapter activations - vectorized Welford update on GPU
             # Reshape to (total_positions, num_features) for easier processing
-            adapter_flat = adapter_activations.reshape(-1, adapter_activations.shape[2])  # (batch*seq, features)
+            adapter_flat = adapter_activations.view(-1, adapter_activations.shape[2])  # (batch*seq, features)
             
-            for value_vec in adapter_flat:  # Iterate over positions, not individual values
+            for value_vec in adapter_flat:  # Iterate over positions, vectorized across features
                 adapter_feature_count += 1
                 delta = value_vec - adapter_feature_mean
-                adapter_feature_mean += delta / adapter_feature_count
+                adapter_feature_mean += delta / adapter_feature_count.float()
                 delta2 = value_vec - adapter_feature_mean
                 adapter_feature_m2 += delta * delta2
             
-            # For SAE activations - vectorized Welford update
-            sae_flat = sae_activations.reshape(-1, sae_activations.shape[2])  # (batch*seq, features)
+            # For SAE activations - vectorized Welford update on GPU
+            sae_flat = sae_activations.view(-1, sae_activations.shape[2])  # (batch*seq, features)
             
-            for value_vec in sae_flat:  # Iterate over positions, not individual values
+            for value_vec in sae_flat:  # Iterate over positions, vectorized across features
                 sae_feature_count += 1
                 delta = value_vec - sae_feature_mean
-                sae_feature_mean += delta / sae_feature_count
+                sae_feature_mean += delta / sae_feature_count.float()
                 delta2 = value_vec - sae_feature_mean
                 sae_feature_m2 += delta * delta2
+
+            # Convert to CPU/NumPy only for the classification analysis that needs it
+            adapter_activations_cpu = adapter_activations.cpu().numpy()
+            sae_activations_cpu = sae_activations.cpu().numpy()
 
             # For the actual CLASSIFICATION ANALYSIS, we correctly use the attention mask.
             attention_mask = batch_tokens["attention_mask"].cpu().numpy()
@@ -468,18 +474,18 @@ def analyze_steering_features(
             else:
                 effective_attention_mask = attention_mask
             
-            feature_indices = np.arange(adapter_activations.shape[2])
+            feature_indices = np.arange(adapter_activations_cpu.shape[2])
             # Use new standardized labels: 'related' and 'not-related'
             related_mask = np.array([feature_classifications.get(idx) == "related" for idx in feature_indices])
             not_related_mask = np.array([feature_classifications.get(idx) == "not-related" for idx in feature_indices])
 
             # Process adapter activations
-            for batch_idx in range(adapter_activations.shape[0]):
+            for batch_idx in range(adapter_activations_cpu.shape[0]):
                 sample_len = int(effective_attention_mask[batch_idx].sum())
                 if sample_len == 0: 
                     continue
 
-                sample_adapter = adapter_activations[batch_idx, :sample_len, :]
+                sample_adapter = adapter_activations_cpu[batch_idx, :sample_len, :]
                 sample_adapter_mask = (np.abs(sample_adapter) > 1e-6)
                 
                 if np.any(sample_adapter_mask):
@@ -507,12 +513,12 @@ def analyze_steering_features(
                     adapter_not_related_steered.extend(steered_not_related_features.tolist())
 
             # Process SAE activations
-            for batch_idx in range(sae_activations.shape[0]):
+            for batch_idx in range(sae_activations_cpu.shape[0]):
                 sample_len = int(effective_attention_mask[batch_idx].sum())
                 if sample_len == 0: 
                     continue
 
-                sample_sae = sae_activations[batch_idx, :sample_len, :]
+                sample_sae = sae_activations_cpu[batch_idx, :sample_len, :]
                 sample_sae_mask = (np.abs(sample_sae) > 1e-6)
                 
                 if np.any(sample_sae_mask):
@@ -670,9 +676,9 @@ def analyze_steering_features(
             "raw_value_stderr": raw_stderr_adapter,
             "feature_usage_counter": adapter_usage_counter.tolist() if adapter_usage_counter is not None else [],
             "feature_statistics": {
-                "feature_count": adapter_feature_count.tolist() if adapter_feature_count is not None else [],
-                "feature_mean": adapter_feature_mean.tolist() if adapter_feature_mean is not None else [],
-                "feature_m2": adapter_feature_m2.tolist() if adapter_feature_m2 is not None else []
+                "feature_count": adapter_feature_count.cpu().tolist() if adapter_feature_count is not None else [],
+                "feature_mean": adapter_feature_mean.cpu().tolist() if adapter_feature_mean is not None else [],
+                "feature_m2": adapter_feature_m2.cpu().tolist() if adapter_feature_m2 is not None else []
             }
         },
         "sae_regular": {
@@ -685,9 +691,9 @@ def analyze_steering_features(
             "raw_value_stderr": raw_stderr_sae,
             "feature_usage_counter": sae_usage_counter.tolist() if sae_usage_counter is not None else [],
             "feature_statistics": {
-                "feature_count": sae_feature_count.tolist() if sae_feature_count is not None else [],
-                "feature_mean": sae_feature_mean.tolist() if sae_feature_mean is not None else [],
-                "feature_m2": sae_feature_m2.tolist() if sae_feature_m2 is not None else []
+                "feature_count": sae_feature_count.cpu().tolist() if sae_feature_count is not None else [],
+                "feature_mean": sae_feature_mean.cpu().tolist() if sae_feature_mean is not None else [],
+                "feature_m2": sae_feature_m2.cpu().tolist() if sae_feature_m2 is not None else []
             }
         }
     }
