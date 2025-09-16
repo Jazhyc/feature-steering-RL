@@ -324,6 +324,15 @@ def analyze_steering_features(
     l0_norms_adapter = []
     l0_norms_sae = []
     
+    # Running statistics for L1 values using Welford's online algorithm
+    l1_adapter_count = 0
+    l1_adapter_mean = 0.0
+    l1_adapter_m2 = 0.0  # Sum of squares of differences from mean
+    
+    l1_sae_count = 0
+    l1_sae_mean = 0.0
+    l1_sae_m2 = 0.0
+    
     # Initialize feature usage counters
     adapter_usage_counter = None
     sae_usage_counter = None
@@ -417,6 +426,25 @@ def analyze_steering_features(
             l0_per_position_batch_sae = np.count_nonzero(np.abs(sae_activations) > 1e-6, axis=-1)
             batch_l0_mean_sae = np.mean(l0_per_position_batch_sae)
             l0_norms_sae.append(batch_l0_mean_sae)
+
+            # Update running L1 statistics using Welford's online algorithm
+            # For adapter activations
+            adapter_abs_values = np.abs(adapter_activations).flatten()
+            for value in adapter_abs_values:
+                l1_adapter_count += 1
+                delta = value - l1_adapter_mean
+                l1_adapter_mean += delta / l1_adapter_count
+                delta2 = value - l1_adapter_mean
+                l1_adapter_m2 += delta * delta2
+            
+            # For SAE activations
+            sae_abs_values = np.abs(sae_activations).flatten()
+            for value in sae_abs_values:
+                l1_sae_count += 1
+                delta = value - l1_sae_mean
+                l1_sae_mean += delta / l1_sae_count
+                delta2 = value - l1_sae_mean
+                l1_sae_m2 += delta * delta2
 
             # For the actual CLASSIFICATION ANALYSIS, we correctly use the attention mask.
             attention_mask = batch_tokens["attention_mask"].cpu().numpy()
@@ -539,6 +567,27 @@ def analyze_steering_features(
     l0_std_sae = float(np.std(l0_norms_sae_array)) if len(l0_norms_sae_array) > 0 else 0.0
     l0_stderr_sae = float(l0_std_sae / np.sqrt(len(l0_norms_sae_array))) if len(l0_norms_sae_array) > 0 else 0.0
     
+    # Calculate L1 statistics from running averages
+    if l1_adapter_count > 0:
+        l1_mean_adapter = float(l1_adapter_mean)
+        l1_variance_adapter = l1_adapter_m2 / l1_adapter_count if l1_adapter_count > 0 else 0.0
+        l1_std_adapter = float(np.sqrt(l1_variance_adapter))
+        l1_stderr_adapter = float(l1_std_adapter / np.sqrt(l1_adapter_count))
+    else:
+        l1_mean_adapter = 0.0
+        l1_std_adapter = 0.0
+        l1_stderr_adapter = 0.0
+    
+    if l1_sae_count > 0:
+        l1_mean_sae = float(l1_sae_mean)
+        l1_variance_sae = l1_sae_m2 / l1_sae_count if l1_sae_count > 0 else 0.0
+        l1_std_sae = float(np.sqrt(l1_variance_sae))
+        l1_stderr_sae = float(l1_std_sae / np.sqrt(l1_sae_count))
+    else:
+        l1_mean_sae = 0.0
+        l1_std_sae = 0.0
+        l1_stderr_sae = 0.0
+    
     # Create adapter results
     adapter_results = {
         "total_steered_features": len(unique_adapter_steered),
@@ -587,6 +636,9 @@ def analyze_steering_features(
             "l0_norm_mean": l0_mean_adapter,
             "l0_norm_std": l0_std_adapter,
             "l0_norm_stderr": l0_stderr_adapter,
+            "l1_value_mean": l1_mean_adapter,
+            "l1_value_std": l1_std_adapter,
+            "l1_value_stderr": l1_stderr_adapter,
             "feature_usage_counter": adapter_usage_counter.tolist() if adapter_usage_counter is not None else []
         },
         "sae_regular": {
@@ -594,6 +646,9 @@ def analyze_steering_features(
             "l0_norm_mean": l0_mean_sae,
             "l0_norm_std": l0_std_sae,
             "l0_norm_stderr": l0_stderr_sae,
+            "l1_value_mean": l1_mean_sae,
+            "l1_value_std": l1_std_sae,
+            "l1_value_stderr": l1_stderr_sae,
             "feature_usage_counter": sae_usage_counter.tolist() if sae_usage_counter is not None else []
         }
     }
