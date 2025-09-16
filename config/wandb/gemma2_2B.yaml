@@ -1,9 +1,9 @@
 # Weights & Biases Configuration
-project: "Gemma2-2B-new-arch"
+project: "Gemma2-2B-newarch-sparsitysweep"
 entity: "feature-steering-RL"
 dir: "logs"
 
 # Optional WandB settings
 tags: []
-notes: "layer 12, l0=21"
+notes: "layer 12, l1 pen=0.4"
 mode: "online"
