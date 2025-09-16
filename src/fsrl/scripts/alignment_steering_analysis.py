@@ -352,10 +352,20 @@ def analyze_steering_features(
     sae_related_active = []
     sae_not_related_active = []
     
+    # Pre-compute classification masks ONCE outside the batch loop for maximum efficiency
+    num_features = len(feature_classifications) if feature_classifications else 65536  # Assume default size
+    related_mask_cpu = np.array([feature_classifications.get(idx, "") == "related" for idx in range(num_features)])
+    not_related_mask_cpu = np.array([feature_classifications.get(idx, "") == "not-related" for idx in range(num_features)])
+    
     model.eval()
     with torch.no_grad():
         num_batches = (len(sample_indices) + batch_size - 1) // batch_size
         batch_iterator = tqdm(range(0, len(sample_indices), batch_size), desc="Processing batches", total=num_batches)
+        
+        # Convert classification masks to GPU tensors once
+        device = None
+        related_mask_gpu = None
+        not_related_mask_gpu = None
         
         for i in batch_iterator:
             batch_indices = sample_indices[i:i + batch_size]
@@ -490,14 +500,13 @@ def analyze_steering_features(
             sae_feature_mean = new_mean_sae
             sae_feature_m2 = new_m2_sae
 
-            # Convert classification masks to GPU tensors for maximum speed
-            device = adapter_activations.device
-            feature_indices = torch.arange(adapter_activations.shape[2], device=device)
-            # Use new standardized labels: 'related' and 'not-related'
-            related_mask = torch.tensor([feature_classifications.get(idx.item()) == "related" for idx in feature_indices], 
-                                      device=device, dtype=torch.bool)
-            not_related_mask = torch.tensor([feature_classifications.get(idx.item()) == "not-related" for idx in feature_indices], 
-                                          device=device, dtype=torch.bool)
+            # Initialize GPU masks on first batch
+            if device is None:
+                device = adapter_activations.device
+                # Trim masks to actual feature count
+                actual_num_features = adapter_activations.shape[2]
+                related_mask_gpu = torch.tensor(related_mask_cpu[:actual_num_features], device=device, dtype=torch.bool)
+                not_related_mask_gpu = torch.tensor(not_related_mask_cpu[:actual_num_features], device=device, dtype=torch.bool)
 
             # VECTORIZED GPU PROCESSING - Process all samples at once for massive speedup
             batch_size_dim, seq_len, num_features = adapter_activations.shape
@@ -523,8 +532,8 @@ def analyze_steering_features(
             adapter_all_steered_features.extend(adapter_steered_features.cpu().tolist())
             
             # Classify steered features (GPU operations)
-            adapter_steered_related = adapter_steered_features[related_mask[adapter_steered_features]]
-            adapter_steered_not_related = adapter_steered_features[not_related_mask[adapter_steered_features]]
+            adapter_steered_related = adapter_steered_features[related_mask_gpu[adapter_steered_features]]
+            adapter_steered_not_related = adapter_steered_features[not_related_mask_gpu[adapter_steered_features]]
             adapter_related_steered.extend(adapter_steered_related.cpu().tolist())
             adapter_not_related_steered.extend(adapter_steered_not_related.cpu().tolist())
             
@@ -536,8 +545,8 @@ def analyze_steering_features(
                     
                 sample_mask = adapter_active_mask[batch_idx, :sample_len, :]
                 if torch.any(sample_mask):
-                    related_counts = torch.sum(sample_mask & related_mask[None, :], dim=1)
-                    not_related_counts = torch.sum(sample_mask & not_related_mask[None, :], dim=1)
+                    related_counts = torch.sum(sample_mask & related_mask_gpu[None, :], dim=1)
+                    not_related_counts = torch.sum(sample_mask & not_related_mask_gpu[None, :], dim=1)
                     total_counts = related_counts + not_related_counts
                     valid_pos = total_counts > 0
                     if torch.any(valid_pos):
@@ -559,8 +568,8 @@ def analyze_steering_features(
             sae_all_active_features.extend(sae_active_features.cpu().tolist())
             
             # Classify active features (GPU operations)
-            sae_active_related = sae_active_features[related_mask[sae_active_features]]
-            sae_active_not_related = sae_active_features[not_related_mask[sae_active_features]]
+            sae_active_related = sae_active_features[related_mask_gpu[sae_active_features]]
+            sae_active_not_related = sae_active_features[not_related_mask_gpu[sae_active_features]]
             sae_related_active.extend(sae_active_related.cpu().tolist())
             sae_not_related_active.extend(sae_active_not_related.cpu().tolist())
             
@@ -572,8 +581,8 @@ def analyze_steering_features(
                     
                 sample_mask = sae_active_mask[batch_idx, :sample_len, :]
                 if torch.any(sample_mask):
-                    related_counts = torch.sum(sample_mask & related_mask[None, :], dim=1)
-                    not_related_counts = torch.sum(sample_mask & not_related_mask[None, :], dim=1)
+                    related_counts = torch.sum(sample_mask & related_mask_gpu[None, :], dim=1)
+                    not_related_counts = torch.sum(sample_mask & not_related_mask_gpu[None, :], dim=1)
                     total_counts = related_counts + not_related_counts
                     valid_pos = total_counts > 0
                     if torch.any(valid_pos):
