@@ -999,24 +999,19 @@ def run_all_experiments(
         for append_response in append_response_options:
             experiment_key = f"{classification_mode}_{append_response or 'prompt_only'}_ignore_mask"
             
-            try:
-                results = run_single_experiment(
-                    model=model,
-                    eval_dataset=eval_dataset,
-                    classification_mode=classification_mode,
-                    append_response=append_response,
-                    ignore_attention_mask=ignore_attention_mask,
-                    classification_file=classification_file,
-                    output_base_dir=output_base_dir,
-                    num_analysis_samples=num_analysis_samples,
-                    batch_size=batch_size
-                )
-                
-                all_results[experiment_key] = results
-                
-            except Exception as e:
-                print(f"❌ ERROR in experiment {experiment_key}: {e}")
-                all_results[experiment_key] = {"error": str(e)}
+            results = run_single_experiment(
+                model=model,
+                eval_dataset=eval_dataset,
+                classification_mode=classification_mode,
+                append_response=append_response,
+                ignore_attention_mask=ignore_attention_mask,
+                classification_file=classification_file,
+                output_base_dir=output_base_dir,
+                num_analysis_samples=num_analysis_samples,
+                batch_size=batch_size
+            )
+            
+            all_results[experiment_key] = results
         
         # Clean up GPU memory between classification modes
         del model, sae, base_model
