@@ -56,7 +56,7 @@ CONFIG = {
     },
     "analysis": {
         "append_response": None,  # Options: None, "chosen", "rejected". Default None (prompt only)
-        "ignore_attention_mask": False,  # If True, treat all positions as valid (ignore padding)
+        "ignore_attention_mask": True,  # If True, treat all positions as valid (ignore padding)
     }
 }
 
@@ -185,7 +185,7 @@ def analyze_features_from_cache(
     attention_mask: np.ndarray,
     feature_classifications: Dict[int, str],
     classification_mode: str,
-    ignore_attention_mask: bool = False
+    ignore_attention_mask: bool = True
 ) -> Tuple[Dict[str, any], np.ndarray]:
     """
     Analyze feature activations and their classification properties.
@@ -324,18 +324,18 @@ def analyze_steering_features(
     l0_norms_adapter = []
     l0_norms_sae = []
     
-    # Running statistics for raw values using Welford's online algorithm
-    raw_adapter_count = 0
-    raw_adapter_mean = 0.0
-    raw_adapter_m2 = 0.0  # Sum of squares of differences from mean
-    
-    raw_sae_count = 0
-    raw_sae_mean = 0.0
-    raw_sae_m2 = 0.0
-    
     # Initialize feature usage counters
     adapter_usage_counter = None
     sae_usage_counter = None
+    
+    # Per-feature activation statistics using Welford's online algorithm
+    adapter_feature_count = None
+    adapter_feature_mean = None
+    adapter_feature_m2 = None
+    
+    sae_feature_count = None
+    sae_feature_mean = None
+    sae_feature_m2 = None
     
     # Track position-level statistics for proper averaging
     adapter_position_related_ratios = []
@@ -415,6 +415,16 @@ def analyze_steering_features(
                 num_features = adapter_activations.shape[2]
                 adapter_usage_counter = np.zeros(num_features, dtype=int)
                 sae_usage_counter = np.zeros(num_features, dtype=int)
+                
+                # Initialize per-feature activation statistics
+                adapter_feature_count = np.zeros(num_features, dtype=int)
+                adapter_feature_mean = np.zeros(num_features, dtype=float)
+                adapter_feature_m2 = np.zeros(num_features, dtype=float)
+                
+                sae_feature_count = np.zeros(num_features, dtype=int)
+                sae_feature_mean = np.zeros(num_features, dtype=float)
+                sae_feature_m2 = np.zeros(num_features, dtype=float)
+                
                 print(f"Tracking usage for {num_features} SAE features...")
             
             # --- FIX 3: Replicate the trainer's naive L0 norm calculation ---
@@ -427,24 +437,28 @@ def analyze_steering_features(
             batch_l0_mean_sae = np.mean(l0_per_position_batch_sae)
             l0_norms_sae.append(batch_l0_mean_sae)
 
-            # Update running raw value statistics using Welford's online algorithm
-            # For adapter activations
-            adapter_raw_values = adapter_activations.flatten()
-            for value in adapter_raw_values:
-                raw_adapter_count += 1
-                delta = value - raw_adapter_mean
-                raw_adapter_mean += delta / raw_adapter_count
-                delta2 = value - raw_adapter_mean
-                raw_adapter_m2 += delta * delta2
+            # Update per-feature raw value statistics using Welford's online algorithm
+            # For adapter activations - process each feature separately
+            for batch_idx in range(adapter_activations.shape[0]):
+                for pos_idx in range(adapter_activations.shape[1]):
+                    for feature_idx in range(adapter_activations.shape[2]):
+                        value = adapter_activations[batch_idx, pos_idx, feature_idx]
+                        adapter_feature_count[feature_idx] += 1
+                        delta = value - adapter_feature_mean[feature_idx]
+                        adapter_feature_mean[feature_idx] += delta / adapter_feature_count[feature_idx]
+                        delta2 = value - adapter_feature_mean[feature_idx]
+                        adapter_feature_m2[feature_idx] += delta * delta2
             
-            # For SAE activations
-            sae_raw_values = sae_activations.flatten()
-            for value in sae_raw_values:
-                raw_sae_count += 1
-                delta = value - raw_sae_mean
-                raw_sae_mean += delta / raw_sae_count
-                delta2 = value - raw_sae_mean
-                raw_sae_m2 += delta * delta2
+            # For SAE activations - process each feature separately
+            for batch_idx in range(sae_activations.shape[0]):
+                for pos_idx in range(sae_activations.shape[1]):
+                    for feature_idx in range(sae_activations.shape[2]):
+                        value = sae_activations[batch_idx, pos_idx, feature_idx]
+                        sae_feature_count[feature_idx] += 1
+                        delta = value - sae_feature_mean[feature_idx]
+                        sae_feature_mean[feature_idx] += delta / sae_feature_count[feature_idx]
+                        delta2 = value - sae_feature_mean[feature_idx]
+                        sae_feature_m2[feature_idx] += delta * delta2
 
             # For the actual CLASSIFICATION ANALYSIS, we correctly use the attention mask.
             attention_mask = batch_tokens["attention_mask"].cpu().numpy()
@@ -567,22 +581,36 @@ def analyze_steering_features(
     l0_std_sae = float(np.std(l0_norms_sae_array)) if len(l0_norms_sae_array) > 0 else 0.0
     l0_stderr_sae = float(l0_std_sae / np.sqrt(len(l0_norms_sae_array))) if len(l0_norms_sae_array) > 0 else 0.0
     
-    # Calculate raw value statistics from running averages
-    if raw_adapter_count > 0:
-        raw_mean_adapter = float(raw_adapter_mean)
-        raw_variance_adapter = raw_adapter_m2 / raw_adapter_count if raw_adapter_count > 0 else 0.0
-        raw_std_adapter = float(np.sqrt(raw_variance_adapter))
-        raw_stderr_adapter = float(raw_std_adapter / np.sqrt(raw_adapter_count))
+    # Calculate raw value statistics from per-feature statistics
+    # Compute global means as weighted average of per-feature means
+    if adapter_feature_count is not None and np.sum(adapter_feature_count) > 0:
+        # Global mean is weighted average of per-feature means
+        total_adapter_count = np.sum(adapter_feature_count)
+        raw_mean_adapter = float(np.sum(adapter_feature_mean * adapter_feature_count) / total_adapter_count)
+        
+        # For global variance, we need to combine per-feature variances
+        # Using the formula for combining variances from multiple groups
+        feature_variances = np.where(adapter_feature_count > 0, adapter_feature_m2 / adapter_feature_count, 0.0)
+        mean_of_squares = np.sum(adapter_feature_count * (feature_variances + adapter_feature_mean**2)) / total_adapter_count
+        raw_variance_adapter = mean_of_squares - raw_mean_adapter**2
+        raw_std_adapter = float(np.sqrt(max(0, raw_variance_adapter)))
+        raw_stderr_adapter = float(raw_std_adapter / np.sqrt(total_adapter_count))
     else:
         raw_mean_adapter = 0.0
         raw_std_adapter = 0.0
         raw_stderr_adapter = 0.0
     
-    if raw_sae_count > 0:
-        raw_mean_sae = float(raw_sae_mean)
-        raw_variance_sae = raw_sae_m2 / raw_sae_count if raw_sae_count > 0 else 0.0
-        raw_std_sae = float(np.sqrt(raw_variance_sae))
-        raw_stderr_sae = float(raw_std_sae / np.sqrt(raw_sae_count))
+    if sae_feature_count is not None and np.sum(sae_feature_count) > 0:
+        # Global mean is weighted average of per-feature means
+        total_sae_count = np.sum(sae_feature_count)
+        raw_mean_sae = float(np.sum(sae_feature_mean * sae_feature_count) / total_sae_count)
+        
+        # For global variance, we need to combine per-feature variances
+        feature_variances = np.where(sae_feature_count > 0, sae_feature_m2 / sae_feature_count, 0.0)
+        mean_of_squares = np.sum(sae_feature_count * (feature_variances + sae_feature_mean**2)) / total_sae_count
+        raw_variance_sae = mean_of_squares - raw_mean_sae**2
+        raw_std_sae = float(np.sqrt(max(0, raw_variance_sae)))
+        raw_stderr_sae = float(raw_std_sae / np.sqrt(total_sae_count))
     else:
         raw_mean_sae = 0.0
         raw_std_sae = 0.0
@@ -639,7 +667,12 @@ def analyze_steering_features(
             "raw_value_mean": raw_mean_adapter,
             "raw_value_std": raw_std_adapter,
             "raw_value_stderr": raw_stderr_adapter,
-            "feature_usage_counter": adapter_usage_counter.tolist() if adapter_usage_counter is not None else []
+            "feature_usage_counter": adapter_usage_counter.tolist() if adapter_usage_counter is not None else [],
+            "feature_statistics": {
+                "feature_count": adapter_feature_count.tolist() if adapter_feature_count is not None else [],
+                "feature_mean": adapter_feature_mean.tolist() if adapter_feature_mean is not None else [],
+                "feature_m2": adapter_feature_m2.tolist() if adapter_feature_m2 is not None else []
+            }
         },
         "sae_regular": {
             **sae_results,
@@ -649,14 +682,20 @@ def analyze_steering_features(
             "raw_value_mean": raw_mean_sae,
             "raw_value_std": raw_std_sae,
             "raw_value_stderr": raw_stderr_sae,
-            "feature_usage_counter": sae_usage_counter.tolist() if sae_usage_counter is not None else []
+            "feature_usage_counter": sae_usage_counter.tolist() if sae_usage_counter is not None else [],
+            "feature_statistics": {
+                "feature_count": sae_feature_count.tolist() if sae_feature_count is not None else [],
+                "feature_mean": sae_feature_mean.tolist() if sae_feature_mean is not None else [],
+                "feature_m2": sae_feature_m2.tolist() if sae_feature_m2 is not None else []
+            }
         }
     }
     
     return results
 
 
-def save_feature_usage_analysis(feature_usage_counter, feature_classifications, output_file, analysis_type="adapter"):
+def save_feature_usage_analysis(feature_usage_counter, feature_classifications, output_file, analysis_type="adapter", 
+                               feature_count=None, feature_mean=None, feature_m2=None):
     """
     Save detailed feature usage statistics to a separate file.
     
@@ -682,12 +721,34 @@ def save_feature_usage_analysis(feature_usage_counter, feature_classifications, 
         
         classification = feature_classifications.get(feature_idx, "unknown")
         
-        feature_usage_data.append({
+        # Calculate per-feature activation statistics
+        feature_data = {
             "feature_index": feature_idx,
             "usage_count": usage_count,
             "usage_percentage": usage_percentage,
             "classification": classification
-        })
+        }
+        
+        # Add per-feature activation statistics if available
+        if feature_count is not None and feature_mean is not None and feature_m2 is not None:
+            if feature_count[feature_idx] > 0:
+                mean_activation = float(feature_mean[feature_idx])
+                variance = feature_m2[feature_idx] / feature_count[feature_idx]
+                std_activation = float(np.sqrt(variance))
+                firing_rate = float(usage_count / feature_count[feature_idx] * 100)  # Percentage of positions where feature fired
+            else:
+                mean_activation = 0.0
+                std_activation = 0.0
+                firing_rate = 0.0
+            
+            feature_data.update({
+                "mean_activation": mean_activation,
+                "std_activation": std_activation,
+                "firing_rate_percent": firing_rate,
+                "total_positions": int(feature_count[feature_idx])
+            })
+        
+        feature_usage_data.append(feature_data)
     
     # Sort by usage count (most used first)
     feature_usage_data.sort(key=lambda x: x["usage_count"], reverse=True)
@@ -796,20 +857,28 @@ def run_single_experiment(
     
     if "sae_adapter" in results and "feature_usage_counter" in results["sae_adapter"]:
         adapter_usage_file = f"{base_filename}_adapter_feature_usage.json"
+        adapter_stats = results["sae_adapter"]["feature_statistics"]
         save_feature_usage_analysis(
             results["sae_adapter"]["feature_usage_counter"], 
             feature_classifications, 
             adapter_usage_file,
-            analysis_type="adapter"
+            analysis_type="adapter",
+            feature_count=np.array(adapter_stats["feature_count"]),
+            feature_mean=np.array(adapter_stats["feature_mean"]),
+            feature_m2=np.array(adapter_stats["feature_m2"])
         )
     
     if "sae_regular" in results and "feature_usage_counter" in results["sae_regular"]:
         sae_usage_file = f"{base_filename}_sae_feature_usage.json"
+        sae_stats = results["sae_regular"]["feature_statistics"]
         save_feature_usage_analysis(
             results["sae_regular"]["feature_usage_counter"], 
             feature_classifications, 
             sae_usage_file,
-            analysis_type="sae"
+            analysis_type="sae",
+            feature_count=np.array(sae_stats["feature_count"]),
+            feature_mean=np.array(sae_stats["feature_mean"]),
+            feature_m2=np.array(sae_stats["feature_m2"])
         )
     
     # Print summary for both adapter and SAE
@@ -950,7 +1019,7 @@ def main():
     parser.add_argument("--output_file", type=str, help="Path to save analysis results (for single experiments)")
     parser.add_argument("--output_base_dir", type=str, default="outputs/feature_classification/comprehensive_analysis", help="Base directory for comprehensive experiment outputs")
     parser.add_argument("--append_response", type=str, choices=[None, "chosen", "rejected"], default=None, help="Append response to prompt: None (prompt only, default), 'chosen' (prompt+chosen), 'rejected' (prompt+rejected)")
-    parser.add_argument("--ignore_attention_mask", action="store_true", help="Ignore attention mask (treat all positions as valid, including padding)")
+    parser.add_argument("--use_attention_mask", action="store_true", help="Use attention mask (treat padding positions as invalid, default is to ignore mask)")
     
     args = parser.parse_args()
     
@@ -979,7 +1048,7 @@ def main():
             args.classification_file = DEFAULT_ALIGNMENT_CLASSIFICATION_FILE if args.classification_mode == "alignment" else DEFAULT_FORMATTING_CLASSIFICATION_FILE
         
         CONFIG["analysis"]["append_response"] = args.append_response
-        CONFIG["analysis"]["ignore_attention_mask"] = args.ignore_attention_mask
+        CONFIG["analysis"]["ignore_attention_mask"] = not args.use_attention_mask  # Invert because default is to ignore mask
         
         if not args.output_file:
             response_suffix = "_prompt_chosen" if CONFIG["analysis"]["append_response"] == "chosen" else ("_prompt_rejected" if CONFIG["analysis"]["append_response"] == "rejected" else "_prompt_only")
@@ -1086,22 +1155,30 @@ def main():
         
         if "sae_adapter" in results and "feature_usage_counter" in results["sae_adapter"]:
             adapter_usage_file = f"{base_name}_adapter_feature_usage.json"
+            adapter_stats = results["sae_adapter"]["feature_statistics"]
             save_feature_usage_analysis(
                 results["sae_adapter"]["feature_usage_counter"], 
                 feature_classifications, 
                 adapter_usage_file,
-                analysis_type="adapter"
+                analysis_type="adapter",
+                feature_count=np.array(adapter_stats["feature_count"]),
+                feature_mean=np.array(adapter_stats["feature_mean"]),
+                feature_m2=np.array(adapter_stats["feature_m2"])
             )
         else:
             print("No adapter feature usage data available to save.")
         
         if "sae_regular" in results and "feature_usage_counter" in results["sae_regular"]:
             sae_usage_file = f"{base_name}_sae_feature_usage.json"
+            sae_stats = results["sae_regular"]["feature_statistics"]
             save_feature_usage_analysis(
                 results["sae_regular"]["feature_usage_counter"], 
                 feature_classifications, 
                 sae_usage_file,
-                analysis_type="sae"
+                analysis_type="sae",
+                feature_count=np.array(sae_stats["feature_count"]),
+                feature_mean=np.array(sae_stats["feature_mean"]),
+                feature_m2=np.array(sae_stats["feature_m2"])
             )
         else:
             print("No SAE feature usage data available to save.")
