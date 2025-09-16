@@ -353,7 +353,10 @@ def analyze_steering_features(
     sae_not_related_active = []
     
     # Pre-compute classification masks ONCE outside the batch loop for maximum efficiency
-    num_features = len(feature_classifications) if feature_classifications else 65536  # Assume default size
+    if not feature_classifications:
+        raise ValueError("feature_classifications must be provided and non-empty")
+    
+    num_features = max(feature_classifications.keys()) + 1
     related_mask_cpu = np.array([feature_classifications.get(idx, "") == "related" for idx in range(num_features)])
     not_related_mask_cpu = np.array([feature_classifications.get(idx, "") == "not-related" for idx in range(num_features)])
     
@@ -363,7 +366,6 @@ def analyze_steering_features(
         batch_iterator = tqdm(range(0, len(sample_indices), batch_size), desc="Processing batches", total=num_batches)
         
         # Convert classification masks to GPU tensors once
-        device = None
         related_mask_gpu = None
         not_related_mask_gpu = None
         
@@ -437,6 +439,11 @@ def analyze_steering_features(
                 sae_feature_mean = torch.zeros(num_features, dtype=torch.float32, device=device)
                 sae_feature_m2 = torch.zeros(num_features, dtype=torch.float32, device=device)
                 
+                # Initialize GPU classification masks on first batch
+                actual_num_features = adapter_activations.shape[2]
+                related_mask_gpu = torch.tensor(related_mask_cpu[:actual_num_features], device=device, dtype=torch.bool)
+                not_related_mask_gpu = torch.tensor(not_related_mask_cpu[:actual_num_features], device=device, dtype=torch.bool)
+                
                 print(f"Tracking usage for {num_features} SAE features...")
             
             # --- FIX 3: Replicate the trainer's naive L0 norm calculation ---
@@ -499,14 +506,6 @@ def analyze_steering_features(
             sae_feature_count += n_new
             sae_feature_mean = new_mean_sae
             sae_feature_m2 = new_m2_sae
-
-            # Initialize GPU masks on first batch
-            if device is None:
-                device = adapter_activations.device
-                # Trim masks to actual feature count
-                actual_num_features = adapter_activations.shape[2]
-                related_mask_gpu = torch.tensor(related_mask_cpu[:actual_num_features], device=device, dtype=torch.bool)
-                not_related_mask_gpu = torch.tensor(not_related_mask_cpu[:actual_num_features], device=device, dtype=torch.bool)
 
             # VECTORIZED GPU PROCESSING - Process all samples at once for massive speedup
             batch_size_dim, seq_len, num_features = adapter_activations.shape
