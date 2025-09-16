@@ -441,28 +441,54 @@ def analyze_steering_features(
             l0_norms_sae.append(batch_l0_mean_sae)
 
             # Update per-feature raw value statistics using Welford's online algorithm
-            # Vectorized GPU implementation for maximum speed
+            # Fully vectorized GPU implementation - no loops, maximum speed
             
-            # For adapter activations - vectorized Welford update on GPU
-            # Reshape to (total_positions, num_features) for easier processing
+            # For adapter activations - batch vectorized Welford update
             adapter_flat = adapter_activations.view(-1, adapter_activations.shape[2])  # (batch*seq, features)
+            n_new = adapter_flat.shape[0]
             
-            for value_vec in adapter_flat:  # Iterate over positions, vectorized across features
-                adapter_feature_count += 1
-                delta = value_vec - adapter_feature_mean
-                adapter_feature_mean += delta / adapter_feature_count.float()
-                delta2 = value_vec - adapter_feature_mean
-                adapter_feature_m2 += delta * delta2
+            # Current statistics
+            n_old = adapter_feature_count.clone().float()
+            n_total = n_old + n_new
             
-            # For SAE activations - vectorized Welford update on GPU
+            # Batch statistics
+            batch_mean = torch.mean(adapter_flat, dim=0)
+            batch_var = torch.var(adapter_flat, dim=0, unbiased=False) * n_new  # Convert back to sum of squares
+            
+            # Combined mean
+            delta = batch_mean - adapter_feature_mean
+            new_mean = adapter_feature_mean + delta * n_new / n_total
+            
+            # Combined M2 (sum of squared deviations)
+            new_m2 = adapter_feature_m2 + batch_var + delta.pow(2) * n_old * n_new / n_total
+            
+            # Update statistics
+            adapter_feature_count += n_new
+            adapter_feature_mean = new_mean
+            adapter_feature_m2 = new_m2
+            
+            # For SAE activations - batch vectorized Welford update
             sae_flat = sae_activations.view(-1, sae_activations.shape[2])  # (batch*seq, features)
             
-            for value_vec in sae_flat:  # Iterate over positions, vectorized across features
-                sae_feature_count += 1
-                delta = value_vec - sae_feature_mean
-                sae_feature_mean += delta / sae_feature_count.float()
-                delta2 = value_vec - sae_feature_mean
-                sae_feature_m2 += delta * delta2
+            # Current statistics
+            n_old_sae = sae_feature_count.clone().float()
+            n_total_sae = n_old_sae + n_new
+            
+            # Batch statistics
+            batch_mean_sae = torch.mean(sae_flat, dim=0)
+            batch_var_sae = torch.var(sae_flat, dim=0, unbiased=False) * n_new
+            
+            # Combined mean
+            delta_sae = batch_mean_sae - sae_feature_mean
+            new_mean_sae = sae_feature_mean + delta_sae * n_new / n_total_sae
+            
+            # Combined M2 (sum of squared deviations)
+            new_m2_sae = sae_feature_m2 + batch_var_sae + delta_sae.pow(2) * n_old_sae * n_new / n_total_sae
+            
+            # Update statistics
+            sae_feature_count += n_new
+            sae_feature_mean = new_mean_sae
+            sae_feature_m2 = new_m2_sae
 
             # Convert to CPU/NumPy only for the classification analysis that needs it
             adapter_activations_cpu = adapter_activations.cpu().numpy()
