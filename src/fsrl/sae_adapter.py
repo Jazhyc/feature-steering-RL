@@ -83,6 +83,7 @@ class SAEAdapter(SAE):
         
         # Feature masking for ablation studies (set of feature indices to turn off)
         self.masked_features: set[int] = set()
+        self._masked_indices_tensor: torch.Tensor = None  # Precomputed tensor for efficiency
         
     @property
     def adapter_threshold(self) -> torch.Tensor:
@@ -107,6 +108,10 @@ class SAEAdapter(SAE):
         if original_log_threshold is not None:
             device = self.adapter_linear.weight.device
             self.log_threshold.data = original_log_threshold.to(device)
+
+        # Update masked indices tensor to match new device
+        if hasattr(self, '_masked_indices_tensor') and self._masked_indices_tensor is not None:
+            self._update_masked_indices_tensor()
 
         return result
         
@@ -156,16 +161,14 @@ class SAEAdapter(SAE):
     
     def _apply_feature_masking(self, steered_activations: torch.Tensor) -> torch.Tensor:
         """Apply feature masking by setting specified features to zero."""
-        if not self.masked_features:
+        if self._masked_indices_tensor is None or len(self._masked_indices_tensor) == 0:
             return steered_activations
             
-        # Create a mask tensor with zeros for masked features
+        # Create a mask tensor with ones, then set masked features to zero
         mask = torch.ones_like(steered_activations)
         
-        # Set masked features to zero
-        for feature_idx in self.masked_features:
-            if feature_idx < steered_activations.shape[-1]:
-                mask[..., feature_idx] = 0.0
+        # Efficiently set all masked features to zero using precomputed indices
+        mask[..., self._masked_indices_tensor] = 0.0
         
         return steered_activations * mask
 
@@ -324,10 +327,31 @@ class SAEAdapter(SAE):
     def set_masked_features(self, feature_indices: list[int]) -> None:
         """Set which features should be masked (turned off) during inference."""
         self.masked_features = set(feature_indices)
+        # Precompute the tensor for efficient masking
+        self._update_masked_indices_tensor()
         
     def clear_masked_features(self) -> None:
         """Clear all masked features."""
         self.masked_features = set()
+        self._masked_indices_tensor = None
+        
+    def _update_masked_indices_tensor(self) -> None:
+        """Update the precomputed tensor of masked indices for efficient masking."""
+        if not self.masked_features:
+            self._masked_indices_tensor = None
+            return
+            
+        # Filter indices to only include valid ones (within SAE dimension)
+        valid_indices = [idx for idx in self.masked_features if 0 <= idx < self.cfg.d_sae]
+        
+        if valid_indices:
+            self._masked_indices_tensor = torch.tensor(
+                valid_indices,
+                device=self.device,
+                dtype=torch.long
+            )
+        else:
+            self._masked_indices_tensor = None
         
     def get_masked_features(self) -> set[int]:
         """Get the current set of masked feature indices."""

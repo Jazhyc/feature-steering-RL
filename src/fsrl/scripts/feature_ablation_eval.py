@@ -183,12 +183,21 @@ def run_ablation_experiments(trainer: SimPOTrainer, model: FeatureMaskedModel,
     """Run evaluation experiments with different feature sets masked."""
     results = []
     
+    # Create union for "both" experiment to handle overlapping features
+    both_features = sorted(list(set(alignment_features) | set(style_features)))
+    
     experiments = [
         ("baseline", []),
         ("no_alignment", alignment_features),
         ("no_style", style_features),
-        ("no_both", alignment_features + style_features),
+        ("no_both", both_features),
     ]
+    
+    print(f"Feature overlap analysis:")
+    print(f"  Alignment features: {len(alignment_features)}")
+    print(f"  Style features: {len(style_features)}")
+    print(f"  Union (both): {len(both_features)}")
+    print(f"  Overlap: {len(alignment_features) + len(style_features) - len(both_features)}")
     
     for exp_name, masked_features in tqdm(experiments, desc="Running ablation experiments"):
         print(f"\n=== Running experiment: {exp_name} ===")
