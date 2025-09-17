@@ -81,6 +81,9 @@ class SAEAdapter(SAE):
         # 1.0 means use all features; 0.1 means keep top 10% by |value| per item
         self.steering_fraction = 1.0
         
+        # Feature masking for ablation studies (set of feature indices to turn off)
+        self.masked_features: set[int] = set()
+        
     @property
     def adapter_threshold(self) -> torch.Tensor:
         """Computes the threshold from the learnable log_threshold (only for JumpReLU)."""
@@ -150,6 +153,21 @@ class SAEAdapter(SAE):
         
         masked_activations = steered_activations * mask
         return masked_activations, mask
+    
+    def _apply_feature_masking(self, steered_activations: torch.Tensor) -> torch.Tensor:
+        """Apply feature masking by setting specified features to zero."""
+        if not self.masked_features:
+            return steered_activations
+            
+        # Create a mask tensor with zeros for masked features
+        mask = torch.ones_like(steered_activations)
+        
+        # Set masked features to zero
+        for feature_idx in self.masked_features:
+            if feature_idx < steered_activations.shape[-1]:
+                mask[..., feature_idx] = 0.0
+        
+        return steered_activations * mask
 
     def _apply_jump_relu_activation(self, pre_activations: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """Apply JumpReLU activation with learnable threshold and bandwidth."""
@@ -214,6 +232,9 @@ class SAEAdapter(SAE):
             steered_activations, sparsity_mask = self._apply_topk_feature_selection(
                 steered_activations, self.steering_fraction
             )
+
+        # Apply feature masking for ablation studies (turn off specific features)
+        steered_activations = self._apply_feature_masking(steered_activations)
 
         # Apply hook and compute statistics
         steered_activations = self.hook_sae_adapter(steered_activations)
@@ -299,6 +320,18 @@ class SAEAdapter(SAE):
         if not (0.0 < fraction <= 1.0):
             raise ValueError("steering_fraction must be in (0, 1].")
         self.steering_fraction = float(fraction)
+        
+    def set_masked_features(self, feature_indices: list[int]) -> None:
+        """Set which features should be masked (turned off) during inference."""
+        self.masked_features = set(feature_indices)
+        
+    def clear_masked_features(self) -> None:
+        """Clear all masked features."""
+        self.masked_features = set()
+        
+    def get_masked_features(self) -> set[int]:
+        """Get the current set of masked feature indices."""
+        return self.masked_features.copy()
     
     def save_adapter(self, path: str | Path):
         """Saves only the trainable adapter weights and its configuration."""
