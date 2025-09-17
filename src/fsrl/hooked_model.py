@@ -309,3 +309,15 @@ class HookedModel(BaseHookedModel):
     def set_steering_fraction(self, fraction: float) -> None:
         """Set the fraction of features used by the adapter's steering vector."""
         self.sae_adapter.set_steering_fraction(fraction)
+        
+    def set_masked_features(self, feature_indices: List[int]) -> None:
+        """Set which features should be masked (turned off) during inference."""
+        self.sae_adapter.set_masked_features(feature_indices)
+        
+    def clear_masked_features(self) -> None:
+        """Clear all masked features."""
+        self.sae_adapter.clear_masked_features()
+        
+    def get_masked_features(self) -> set[int]:
+        """Get the current set of masked feature indices."""
+        return self.sae_adapter.get_masked_features()

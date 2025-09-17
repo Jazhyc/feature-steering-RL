@@ -158,27 +158,7 @@ def make_trainer(model, tokenizer, eval_dataset, training_cfg) -> SimPOTrainer:
     return trainer
 
 
-class FeatureMaskedModel:
-    """Wrapper around HookedModel that can mask specific features during evaluation."""
-    
-    def __init__(self, hooked_model: HookedModel):
-        self.hooked_model = hooked_model
-        
-    def set_masked_features(self, feature_indices: List[int]):
-        """Set which features should be masked (turned off) during inference."""
-        self.hooked_model.sae_adapter.set_masked_features(feature_indices)
-        print(f"Masking {len(feature_indices)} features during evaluation")
-        
-    def clear_masked_features(self):
-        """Clear all masked features."""
-        self.hooked_model.sae_adapter.clear_masked_features()
-        
-    def __getattr__(self, name):
-        """Delegate all other attributes to the wrapped HookedModel."""
-        return getattr(self.hooked_model, name)
-
-
-def run_ablation_experiments(trainer: SimPOTrainer, model: FeatureMaskedModel, 
+def run_ablation_experiments(trainer: SimPOTrainer, model: HookedModel, 
                            alignment_features: List[int], style_features: List[int]):
     """Run evaluation experiments with different feature sets masked."""
     results = []
@@ -256,10 +236,7 @@ def main(cfg: DictConfig) -> None:
     if not adapter_local_path:
         raise ValueError("adapter_local_path must be set or auto_download configured with wandb_run_name")
     sae = load_sae_adapter(cfg.architecture.model.device, adapter_local_path)
-    hooked_model = HookedModel(base_model, sae)
-    
-    # Wrap in feature masking wrapper
-    model = FeatureMaskedModel(hooked_model)
+    model = HookedModel(base_model, sae)
 
     # Dataset
     eval_dataset = load_eval_dataset(cfg.architecture.dataset, tokenizer)
