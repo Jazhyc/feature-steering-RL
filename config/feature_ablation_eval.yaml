@@ -10,9 +10,9 @@ wandb:
 
 # For optional downloads via wandb_utils
 wandb_entity: feature-steering-RL
-wandb_project_family: Gemma2-2B-new-arch
+wandb_project_family: Gemma2-2B-clean
 # When auto_download=true, set the specific completed run name to fetch
-wandb_run_name: pious-wildflower-11
+wandb_run_name: mild-glade-10
 auto_download: true
 force_download: false
 
