@@ -1,0 +1,40 @@
+# Config for base model evaluation on ultrafeedback dataset
+
+wandb:
+  project: fsrl-base-model-eval
+  entity: feature-steering-RL
+  dir: "logs"
+  mode: online
+  tags: [eval, base-model, baseline]
+  notes: "Base model evaluation loss on ultrafeedback dataset"
+
+architecture:
+  use_sae: false  # No SAE adapter for base model evaluation
+  model:
+    name: gemma-2-2b-it
+    device: cuda
+    dtype: bfloat16
+  dataset:
+    name: princeton-nlp/llama3-ultrafeedback-armorm
+    train_split: train
+    eval_split: test
+    # same chat template as in architecture/gemma2_2B.yaml
+    chat_template: "{{ bos_token }}{% if messages[0]['role'] == 'system' %}{% set system_message = messages[0]['content'] | trim + '\n\n' %}{% set messages = messages[1:] %}{% else %}{% set system_message = '' %}{% endif %}{% for message in messages %}{% if loop.index0 == 0 %}{% set content = system_message + message['content'] %}{% else %}{% set content = message['content'] %}{% endif %}{% if (message['role'] == 'assistant') %}{% set role = 'model' %}{% else %}{% set role = message['role'] %}{% endif %}{{ '<start_of_turn>' + role + '\n' + content | trim + '<end_of_turn>\n' }}{% endfor %}{% if add_generation_prompt %}{{'<start_of_turn>model\n'}}{% endif %}"
+    sample_size: null
+    dataset_num_proc: 20
+
+training:
+  per_device_train_batch_size: 2
+  per_device_eval_batch_size: 4
+  gradient_accumulation_steps: 1
+  eval_steps: 100
+  # SimPO parameters to match gemma2_2B.yaml
+  beta: 10
+  gamma_beta_ratio: 0.5
+  # Training settings for compatibility (not used in eval-only script)
+  max_prompt_length: 1800
+  max_length: 2048
+
+hydra:
+  run:
+    dir: logs/hydra_runs/${now:%Y-%m-%d_%H-%M-%S}
