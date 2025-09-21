@@ -405,7 +405,7 @@ class SAEAdapter(SAE):
             config = json.load(f)
 
         # Extract adapter kwargs from config
-        activation_type = config.get("activation_type", "soft_threshold")  # Default to soft threshold
+        activation_type = config.get("activation_type", "relu")  # Default to relu for legacy models
         
         # Legacy support for old boolean flags
         if config.get("use_jump_relu", False):
