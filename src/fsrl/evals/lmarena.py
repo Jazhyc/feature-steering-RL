@@ -18,7 +18,7 @@ from lm_eval.models.huggingface import HFLM
 def run_eval(runs, tasks, limit=0.01, with_adapter=True, full_ft=False):
     
     root = Path(__file__).resolve().parent.parent.parent  # climb up to project root
-    models_path = f"{root}/models/Gemma2-2B-clean" if not full_ft else f"{root}/models/full-gemma2_2B"
+    models_path = f"{root}/models/Gemma2-2B-new-arch" if not full_ft else f"{root}/models/full-gemma2_2B"
     
     load_dotenv()
     wandb.login(key=os.getenv("WANDB_API_KEY"))
@@ -26,7 +26,7 @@ def run_eval(runs, tasks, limit=0.01, with_adapter=True, full_ft=False):
 
     downloader = WandBModelDownloader(
         entity="feature-steering-RL",
-        project="Gemma2-2B-clean" if not full_ft else "full-gemma2_2B",
+        project="Gemma2-2B-new-arch" if not full_ft else "full-gemma2_2B",
         verbose=True
     )
 
@@ -47,7 +47,7 @@ def run_eval(runs, tasks, limit=0.01, with_adapter=True, full_ft=False):
         else:
             base_model = HookedTransformer.from_pretrained_no_processing("google/gemma-2-2b-it", device="cuda", dtype=torch.bfloat16)
 
-            adapter_path = downloader.models_base_dir / "Gemma2-2B-clean" / run / "adapter"
+            adapter_path = downloader.models_base_dir / "Gemma2-2B-new-arch" / run / "adapter"
 
             print(f"Loading adapter from: {adapter_path}")
             sae_adapter = SAEAdapter.load_from_pretrained_adapter(adapter_path, device="cuda")

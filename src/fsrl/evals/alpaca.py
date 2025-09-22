@@ -16,24 +16,24 @@ import alpaca_eval
 
 
 
-def load_model_and_adapter(run, with_adapter=True, full_ft=False):
+def load_model_and_adapter(run, with_adapter=True, full_ft=False, wandb_project="Gemma2-2B-new-arch"):
     """Load model and adapter using the same logic as evals.py"""
     root = Path(__file__).resolve().parent.parent.parent
-    models_path = f"{root}/models/Gemma2-2B-clean" if not full_ft else f"{root}/models/full-gemma2_2B"
+    models_path = f"{root}/models/{wandb_project}" if not full_ft else f"{root}/models/full-gemma2_2B"
     
     load_dotenv()
     wandb.login(key=os.getenv("WANDB_API_KEY"))
     
     downloader = WandBModelDownloader(
         entity="feature-steering-RL",
-        project="Gemma2-2B-clean" if not full_ft else "full-gemma2_2B",
+        project=wandb_project if not full_ft else "full-gemma2_2B",
         verbose=True
     )
     
     print(f"##### Loading model for run: {run} #####")
     
     # Search in the correct project based on full_ft flag
-    project_name = "feature-steering-rl/full-gemma2_2B" if full_ft else "feature-steering-rl/Gemma2-2B-clean"
+    project_name = "feature-steering-rl/full-gemma2_2B" if full_ft else f"feature-steering-rl/{wandb_project}"
     run_objs = downloader.api.runs(project_name, filters={"display_name": run})
     
     if not run_objs:
@@ -52,7 +52,7 @@ def load_model_and_adapter(run, with_adapter=True, full_ft=False):
             dtype=torch.bfloat16
         )
         
-        adapter_path = downloader.models_base_dir / "Gemma2-2B-clean" / run / "adapter"
+        adapter_path = downloader.models_base_dir / wandb_project / run / "adapter"
         print(f"Loading adapter from: {adapter_path}")
         sae_adapter = SAEAdapter.load_from_pretrained_adapter(adapter_path, device="cuda")
         hooked_model = HookedModel(base_model, sae_adapter)
