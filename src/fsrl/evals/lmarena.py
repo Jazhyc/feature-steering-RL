@@ -5,8 +5,8 @@ import wandb
 import json
 from dotenv import load_dotenv
 from pathlib import Path
-from fsrl import SAEAdapter, HookedModel, BaseHookedModel
-from fsrl.utils.wandb_utils import (
+from .. import SAEAdapter, HookedModel, BaseHookedModel
+from ..utils.wandb_utils import (
     WandBModelDownloader,
     download_model_family,
     list_model_family,
@@ -17,7 +17,7 @@ from lm_eval.models.huggingface import HFLM
 
 def run_eval(runs, tasks, limit=0.01, with_adapter=True, full_ft=False):
     
-    root = Path(__file__).resolve().parent.parent  # climb up to project root
+    root = Path(__file__).resolve().parent.parent.parent  # climb up to project root
     models_path = f"{root}/models/Gemma2-2B-clean" if not full_ft else f"{root}/models/full-gemma2_2B"
     
     load_dotenv()
@@ -122,4 +122,4 @@ def pretty_results(results):
         for task, result in task_results.items():
             print(f"Task: {task}")
             print(f"Result: {result}")
-            print("-" * 100)
+            print("-" * 100) 
