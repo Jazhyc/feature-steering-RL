@@ -1,5 +1,5 @@
 run_id,run_name,project_name,state,eval_loss,train_l0_norm_sparsity,l1_act_coeff,sae_id,layer,source
-nnbk5bvv,bright-pine-5,Gemma2-2B-layer-sweep,finished,2.9357709884643555,3645.958251953125,0.01,layer_12/width_65k/average_l0_21,12,layer-sweep
-ajra1qmb,stellar-meadow-6,Gemma2-2B-layer-sweep,finished,4.330941677093506,2609.1787109375,0.01,layer_6/width_65k/average_l0_17,6,layer-sweep
-zbj91dbw,glamorous-brook-7,Gemma2-2B-layer-sweep,finished,5.054842948913574,362.3351440429687,0.01,layer_18/width_65k/average_l0_21,18,layer-sweep
-u6hjhwr4,dulcet-snowball-8,Gemma2-2B-layer-sweep,finished,5.129177093505859,164.6973419189453,0.01,layer_24/width_65k/average_l0_19,24,layer-sweep
+hfdtjnml,visionary-pond-1,Gemma2-2B-newarch-layersweep,finished,3.765625,3618.915283203125,0.1,layer_12/width_65k/average_l0_21,12,layer-sweep
+i3f10b22,copper-snowball-2,Gemma2-2B-newarch-layersweep,finished,4.03125,2917.201416015625,0.1,layer_6/width_65k/average_l0_17,6,layer-sweep
+wwz99cjn,astral-armadillo-3,Gemma2-2B-newarch-layersweep,finished,5.34375,4429.1728515625,0.1,layer_18/width_65k/average_l0_21,18,layer-sweep
+zsy2ql5m,rural-water-4,Gemma2-2B-newarch-layersweep,finished,5.96875,7740.984375,0.1,layer_24/width_65k/average_l0_19,24,layer-sweep

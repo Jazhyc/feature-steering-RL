@@ -1,25 +1,24 @@
-# Minimal config for steering fraction evaluation experiment
+# Minimal config for feature ablation evaluation experiment
 
 wandb:
-  project: fsrl-steering-fraction-eval
+  project: fsrl-feature-ablation-eval
   entity: feature-steering-RL
   dir: "logs"
   mode: online
-  tags: [eval, steering-fraction]
-  notes: "Validation loss vs. steering fraction"
+  tags: [eval, feature-ablation, alignment, style]
+  notes: "Validation loss when turning off alignment vs style features"
 
 # For optional downloads via wandb_utils
 wandb_entity: feature-steering-RL
-wandb_project_family: Gemma2-2B-new-arch
+wandb_project_family: Gemma2-2B-clean
 # When auto_download=true, set the specific completed run name to fetch
-wandb_run_name: pious-wildflower-11
+wandb_run_name: mild-glade-10
 auto_download: true
 force_download: false
 
-# Fraction sweep schedule (geometric): start at 0.01, multiply by 5, cap at 0.1
-fraction_start: 0.001
-fraction_multiplier: 2.0
-fraction_max: 0.2
+# Classification files containing DeepSeek labels
+alignment_classification_file: "${oc.env:PWD}/outputs/feature_classification/gemma-2-2b/12-gemmascope-res-65k__l0-21_alignment_classified_deepseek-v3-0324.json"
+style_classification_file: "${oc.env:PWD}/outputs/feature_classification/gemma-2-2b/12-gemmascope-res-65k__l0-21_formatting_classified_deepseek-v3-0324.json"
 
 architecture:
   use_sae: true

@@ -1,34 +1,19 @@
-# Minimal config for steering fraction evaluation experiment
+# Config for base model evaluation on ultrafeedback dataset
 
 wandb:
-  project: fsrl-steering-fraction-eval
+  project: fsrl-base-model-eval
   entity: feature-steering-RL
   dir: "logs"
   mode: online
-  tags: [eval, steering-fraction]
-  notes: "Validation loss vs. steering fraction"
-
-# For optional downloads via wandb_utils
-wandb_entity: feature-steering-RL
-wandb_project_family: Gemma2-2B-new-arch
-# When auto_download=true, set the specific completed run name to fetch
-wandb_run_name: pious-wildflower-11
-auto_download: true
-force_download: false
-
-# Fraction sweep schedule (geometric): start at 0.01, multiply by 5, cap at 0.1
-fraction_start: 0.001
-fraction_multiplier: 2.0
-fraction_max: 0.2
+  tags: [eval, base-model, baseline]
+  notes: "Base model evaluation loss on ultrafeedback dataset"
 
 architecture:
-  use_sae: true
+  use_sae: false  # No SAE adapter for base model evaluation
   model:
     name: gemma-2-2b-it
     device: cuda
     dtype: bfloat16
-  # Required for this experiment: local path to a trained adapter folder containing adapter_weights.safetensors
-  adapter_local_path: null
   dataset:
     name: princeton-nlp/llama3-ultrafeedback-armorm
     train_split: train
@@ -46,6 +31,9 @@ training:
   # SimPO parameters to match gemma2_2B.yaml
   beta: 10
   gamma_beta_ratio: 0.5
+  # Training settings for compatibility (not used in eval-only script)
+  max_prompt_length: 1800
+  max_length: 2048
 
 hydra:
   run:

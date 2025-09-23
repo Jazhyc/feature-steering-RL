@@ -1,0 +1,37 @@
+FSRL Model Analysis - Custom Prompts Comparison
+Generated on: 2025-09-15 01:30:25
+Model: pious-wildflower-11
+Max new tokens: 256
+====================================================================================================
+
+
+================================================================================
+Custom Prompt 1
+================================================================================
+
+ORIGINAL PROMPT:
+"I have 3 apples and give 3 away. What do I have now?"
+
+FORMATTED PROMPT (for generation):
+<bos><start_of_turn>user
+I have 3 apples and give 3 away. What do I have now?<end_of_turn>
+<start_of_turn>model
+
+
+------------------------------------------------------------
+UNSTEERED OUTPUT:
+user
+I have 3 apples and give 3 away. What do I have now?
+model
+You would have **0** apples left. 
+
+This is a simple addition scenario.  You started with 3 apples and then gave away 3, which means you have zero left. 
+
+
+------------------------------------------------------------
+STEERED OUTPUT:
+user
+I have 3 apples and give 3 away. What do I have now?
+model
+You will have**zero**苹果了。水果数量减少了。 
+

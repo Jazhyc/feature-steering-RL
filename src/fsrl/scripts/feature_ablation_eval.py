@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
 """
-Experiment: Evaluate validation loss as we limit the adapter's steering vector
-to the top-k features by absolute value. Sweep in intervals and log to W&B.
+Experiment: Evaluate validation loss when turning off specific feature types.
+Load DeepSeek classification labels and measure evaluation loss when alignment
+or style features are turned off during inference.
 
-This reuses model/dataset loading from train.py and utilities across the repo.
+This builds on steering_fraction_eval.py but instead of varying steering
+fraction, it evaluates with specific features disabled.
 """
 
 import os
 import sys
+import json
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Dict, Set
 
 import torch
 import wandb
@@ -30,7 +33,7 @@ dtype_map = {
     "bfloat16": torch.bfloat16,
 }
 
-# Optional progress bar for fraction sweep
+# Optional progress bar
 try:
     from tqdm.auto import tqdm
 except Exception:
@@ -41,6 +44,39 @@ except Exception:
 def setup_env():
     load_dotenv()
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+
+def load_classification_labels(classification_file: str) -> Dict[str, List[int]]:
+    """
+    Load feature classification labels from DeepSeek JSON file.
+    
+    Returns:
+        Dict with 'related' and 'not-related' keys containing lists of feature indices
+    """
+    print(f"Loading classification labels from: {classification_file}")
+    
+    with open(classification_file, 'r') as f:
+        classifications = json.load(f)
+    
+    related_features = []
+    not_related_features = []
+    
+    for item in classifications:
+        # Extract feature index from feature_id like "gemma-2-2b-12-gemmascope-res-65k-53844"
+        feature_id = item['feature_id']
+        feature_index = int(feature_id.split('-')[-1])
+        
+        if item['label'] == 'related':
+            related_features.append(feature_index)
+        else:
+            not_related_features.append(feature_index)
+    
+    print(f"Found {len(related_features)} related features, {len(not_related_features)} not-related features")
+    
+    return {
+        'related': sorted(related_features),
+        'not-related': sorted(not_related_features)
+    }
 
 
 def load_base_model(model_cfg) -> HookedTransformer:
@@ -122,23 +158,72 @@ def make_trainer(model, tokenizer, eval_dataset, training_cfg) -> SimPOTrainer:
     return trainer
 
 
-def sweep_and_log(trainer: SimPOTrainer, model, fractions: List[float]):
+def run_ablation_experiments(trainer: SimPOTrainer, model: HookedModel, 
+                           alignment_features: List[int], style_features: List[int]):
+    """Run evaluation experiments with different feature sets masked."""
     results = []
-    for frac in tqdm(fractions, desc="Sweeping steering fractions"):
-        if isinstance(model, HookedModel):
-            model.set_steering_fraction(frac)
-        # Evaluate; use trainer's evaluate to compute loss
+    
+    # Create union for "both" experiment to handle overlapping features
+    both_features = sorted(list(set(alignment_features) | set(style_features)))
+    
+    experiments = [
+        ("baseline", []),
+        ("no_alignment", alignment_features),
+        ("no_style", style_features),
+        ("no_both", both_features),
+    ]
+    
+    print(f"Feature overlap analysis:")
+    print(f"  Alignment features: {len(alignment_features)}")
+    print(f"  Style features: {len(style_features)}")
+    print(f"  Union (both): {len(both_features)}")
+    print(f"  Overlap: {len(alignment_features) + len(style_features) - len(both_features)}")
+    
+    for exp_name, masked_features in tqdm(experiments, desc="Running ablation experiments"):
+        print(f"\n=== Running experiment: {exp_name} ===")
+        print(f"Masking {len(masked_features)} features")
+        
+        # Set masked features
+        model.set_masked_features(masked_features)
+        
+        # Evaluate
         metrics = trainer.evaluate()
-        metrics = {**metrics, "steering_fraction": frac}
-        wandb.log({"eval/loss": metrics.get("eval_loss"), "steering_fraction": frac})
+        metrics["experiment"] = exp_name
+        metrics["num_masked_features"] = len(masked_features)
+        
+        # Log to W&B
+        wandb.log({
+            f"eval/{exp_name}/loss": metrics.get("eval_loss"),
+            f"eval/{exp_name}/num_masked": len(masked_features),
+            "experiment": exp_name
+        })
+        
         results.append(metrics)
+        print(f"Eval loss: {metrics.get('eval_loss', 'N/A')}")
+    
     return results
 
 
-@hydra.main(version_base=None, config_path="../../config", config_name="steering_fraction_eval")
+@hydra.main(version_base=None, config_path="../../../config", config_name="feature_ablation_eval")
 def main(cfg: DictConfig) -> None:
     setup_env()
 
+    # Load classification labels
+    alignment_file = cfg.get("alignment_classification_file")
+    style_file = cfg.get("style_classification_file") 
+    
+    if not alignment_file or not style_file:
+        raise ValueError("alignment_classification_file and style_classification_file must be specified")
+    
+    alignment_labels = load_classification_labels(alignment_file)
+    style_labels = load_classification_labels(style_file)
+    
+    alignment_features = alignment_labels['related']
+    style_features = style_labels['related']
+    
+    print(f"Alignment features to mask: {len(alignment_features)}")
+    print(f"Style features to mask: {len(style_features)}")
+    
     # Optional W&B artifact download (single run)
     downloaded_adapter_path = ensure_models_available(cfg)
 
@@ -171,27 +256,15 @@ def main(cfg: DictConfig) -> None:
         name=cfg.wandb.get("name", None),
     )
 
-    # Build geometric fraction schedule: start at 0.01 and multiply by 5 until 0.1
-    start_frac = cfg.get("fraction_start", 0.001)
-    mult = cfg.get("fraction_multiplier", 5.0)
-    max_frac = cfg.get("fraction_max", 0.1)
-    fractions = []
-    f = float(start_frac)
-    while f <= float(max_frac) + 1e-12:  # small epsilon to include boundary
-        fractions.append(f)
-        f *= float(mult)
-    # Ensure max fraction is included if we overshot without hitting it exactly
-    if fractions and (fractions[-1] < float(max_frac) - 1e-12):
-        fractions.append(float(max_frac))
-
-    results = sweep_and_log(trainer, model, fractions)
+    # Run ablation experiments
+    results = run_ablation_experiments(trainer, model, alignment_features, style_features)
 
     # Log table summary
     if results:
         table = wandb.Table(columns=list(results[0].keys()))
         for r in results:
             table.add_data(*[r.get(c) for c in table.columns])
-        wandb.log({"steering_fraction_eval": table})
+        wandb.log({"feature_ablation_results": table})
 
     wandb.finish()
 
