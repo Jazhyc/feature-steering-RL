@@ -35,10 +35,11 @@ def run_eval(runs, tasks, limit=0.01, with_adapter=True, full_ft=False):
     for run in runs:
         print(f"##### Running evaluation for run: {run} #####")
         print("=" * 30)
-        run_objs = downloader.api.runs("feature-steering-rl/full-gemma2_2B", filters={"display_name": run})
-        downloader.download_model(run_objs[0], models_path)
+        project_name = "feature-steering-rl/full-gemma2_2B" if full_ft else "feature-steering-rl/Gemma2-2B-new-arch"
+        run_objs = downloader.api.runs(project_name, filters={"display_name": run})
+        downloader.download_model(run_objs[0], "Gemma2-2B-new-arch" if not full_ft else "full-gemma2_2B")
         
-        # Create a fresh base model for each adapter to avoid hook point conflicts
+        # fresh base model for each adapter to avoid hook point conflicts
         print(f"Loading fresh base model for run: {run}")
         if full_ft:
             base_model_path = downloader.models_base_dir / "full-gemma2_2B" / run / "full_model"
@@ -53,7 +54,6 @@ def run_eval(runs, tasks, limit=0.01, with_adapter=True, full_ft=False):
             sae_adapter = SAEAdapter.load_from_pretrained_adapter(adapter_path, device="cuda")
             hooked_model = HookedModel(base_model, sae_adapter)
         
-            # Disable steering if not using adapter
             if not with_adapter:
                 hooked_model.disable_steering()
                 print(f"Evaluating model without steering")
@@ -66,7 +66,6 @@ def run_eval(runs, tasks, limit=0.01, with_adapter=True, full_ft=False):
             hf_model = hooked_model.model
             print(f"Debug: Using HookedTransformer's underlying model")
         else:
-            # Fallback - use model directly
             hf_model = hooked_model
             print(f"Debug: Using model directly")
         
@@ -75,9 +74,9 @@ def run_eval(runs, tasks, limit=0.01, with_adapter=True, full_ft=False):
         batch_size = initial_batch_size
         while True:
             try:
-                # Create HFLM wrapper for lm_eval
                 eval_model = HFLM(pretrained=hf_model, tokenizer=tokenizer, batch_size=batch_size)
                 
+                # apparently not used anymore
                 #task_manager = lm_eval.tasks.TaskManager()
 
                 results = lm_eval.simple_evaluate(
@@ -100,7 +99,6 @@ def run_eval(runs, tasks, limit=0.01, with_adapter=True, full_ft=False):
     
         summary_results[run] = results["results"]
 
-    # Save results as a JSON file and upload as WandB artifact
     results_file = "eval_results.json"
     with open(results_file, 'w') as f:
         json.dump(summary_results, f, indent=2)
@@ -109,9 +107,7 @@ def run_eval(runs, tasks, limit=0.01, with_adapter=True, full_ft=False):
     artifact.add_file(results_file)
     wandb.log_artifact(artifact)
 
-    # Log summary results for dashboard viewing
     wandb.log(summary_results)
-
     os.remove(results_file)
 
     return summary_results

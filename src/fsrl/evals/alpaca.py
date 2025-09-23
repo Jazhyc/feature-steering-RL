@@ -39,7 +39,7 @@ def load_model_and_adapter(run, with_adapter=True, full_ft=False, wandb_project=
     if not run_objs:
         raise ValueError(f"No run found with name '{run}' in project '{project_name}'")
     
-    downloader.download_model(run_objs[0], models_path)
+    downloader.download_model(run_objs[0], wandb_project)
     
     if full_ft:
         base_model_path = downloader.models_base_dir / "full-gemma2_2B" / run / "full_model"
@@ -65,8 +65,8 @@ def load_model_and_adapter(run, with_adapter=True, full_ft=False, wandb_project=
     tokenizer = base_model.tokenizer
     return hooked_model, tokenizer
 
-def generate_model_outputs(hooked_model, tokenizer, run_name, limit=None):
-    """Generate outputs for AlpacaEval dataset using our model"""
+def generate_model_outputs(hooked_model, tokenizer, run_name, limit=None, batch_size=16):
+    """Generate outputs for AlpacaEval dataset using our model with batching"""
     import datasets
 
     eval_data = datasets.load_dataset("tatsu-lab/alpaca_farm", "alpaca_farm_evaluation", trust_remote_code=True)["eval"]
@@ -77,25 +77,45 @@ def generate_model_outputs(hooked_model, tokenizer, run_name, limit=None):
     
     model_outputs = []
     
-    print(f"Generating outputs for {len(eval_data)} examples...")
+    print(f"Generating outputs for {len(eval_data)} examples with batch size {batch_size}...")
     
-    for i, example in enumerate(eval_data):
-        if i % 50 == 0:
-            print(f"Progress: {i}/{len(eval_data)}")
+    # Process in batches
+    for batch_start in range(0, len(eval_data), batch_size):
+        batch_end = min(batch_start + batch_size, len(eval_data))
+        batch = eval_data.select(range(batch_start, batch_end))
+        
+        if batch_start % (batch_size * 10) == 0:  # Progress every 10 batches
+            print(f"Progress: {batch_start}/{len(eval_data)}")
+        
+        # Prepare batch prompts
+        prompts = []
+        instructions = []
+        
+        for example in batch:
+            instruction = example['instruction']
+            instructions.append(instruction)
             
-        instruction = example['instruction']
+            if hasattr(tokenizer, 'apply_chat_template'):
+                messages = [{"role": "user", "content": instruction}]
+                prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+            else:
+                prompt = f"<bos><start_of_turn>user\n{instruction}<end_of_turn>\n<start_of_turn>model\n"
+            
+            prompts.append(prompt)
         
-        if hasattr(tokenizer, 'apply_chat_template'):
-            messages = [{"role": "user", "content": instruction}]
-            prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-        else:
-            prompt = f"<bos><start_of_turn>user\n{instruction}<end_of_turn>\n<start_of_turn>model\n"
-        
-        input_ids = tokenizer.encode(prompt, return_tensors="pt").to(hooked_model.device)
+        # Tokenize batch
+        tokenized = tokenizer(
+            prompts, 
+            return_tensors="pt", 
+            padding=True, 
+            truncation=True,
+            max_length=2048
+        ).to(hooked_model.device)
         
         with torch.no_grad():
             output_ids = hooked_model.generate(
-                input_ids,
+                tokenized.input_ids,
+                attention_mask=tokenized.attention_mask,
                 max_new_tokens=512,
                 temperature=0.7,
                 do_sample=True,
@@ -103,14 +123,17 @@ def generate_model_outputs(hooked_model, tokenizer, run_name, limit=None):
                 eos_token_id=tokenizer.eos_token_id,
             )
         
-        response_ids = output_ids[0][len(input_ids[0]):]
-        response = tokenizer.decode(response_ids, skip_special_tokens=True)
-        
-        model_outputs.append({
-            'instruction': instruction,
-            'output': response,
-            'generator': f"hooked_model_{run_name}"
-        })
+        # Process batch outputs
+        for i, instruction in enumerate(instructions):
+            # Extract only the generated tokens (after input)
+            response_ids = output_ids[i][tokenized.input_ids.shape[1]:]
+            response = tokenizer.decode(response_ids, skip_special_tokens=True)
+            
+            model_outputs.append({
+                'instruction': instruction,
+                'output': response,
+                'generator': f"hooked_model_{run_name}"
+            })
     
     return model_outputs
 
