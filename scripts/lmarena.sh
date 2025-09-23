@@ -1,0 +1,2 @@
+python scripts/run_evals.py --eval_type lm_eval --runs pious-wildflower-11 --tasks mmlu truthfulqa gsm8k --with_adapter --print_results
+python scripts/run_evals.py --eval_type lm_eval --runs pious-wildflower-11 --tasks mmlu truthfulqa gsm8k --print_results
