@@ -4,10 +4,10 @@ Unified evaluation script for running lm-eval and AlpacaEval.
 Usage:
 
 LMEval:
-python scripts/run_evals.py --eval_type lm_eval --runs royal-valley-2 mild-glade-10 --tasks mmlu truthfulqa gsm8k --with_adapter --print_results
+python scripts/run_evals.py --eval_type lm_eval --runs pious-wildflower-11 --tasks mmlu truthfulqa gsm8k --with_adapter --print_results
 
 AlpacaEval:
-python scripts/run_evals.py --eval_type alpaca --runs royal-valley-2 mild-glade-10 --with_adapter
+python scripts/run_evals.py --eval_type alpaca --runs pious-wildflower-11 --with_adapter
 """
 import sys
 import os

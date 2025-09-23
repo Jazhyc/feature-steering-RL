@@ -65,7 +65,7 @@ def load_model_and_adapter(run, with_adapter=True, full_ft=False, wandb_project=
     tokenizer = base_model.tokenizer
     return hooked_model, tokenizer
 
-def generate_model_outputs(hooked_model, tokenizer, run_name, limit=None, batch_size=16):
+def generate_model_outputs(hooked_model, tokenizer, run_name, limit=None, batch_size=64):
     """Generate outputs for AlpacaEval dataset using our model with batching"""
     import datasets
 
@@ -107,6 +107,7 @@ def generate_model_outputs(hooked_model, tokenizer, run_name, limit=None, batch_
                     prompt = f"<bos><start_of_turn>user\n{instruction}<end_of_turn>\n<start_of_turn>model\n"
                 
                 prompts.append(prompt)
+                print("PROMPT: ", prompt)
             
             tokenized = tokenizer(
                 prompts, 
@@ -131,6 +132,15 @@ def generate_model_outputs(hooked_model, tokenizer, run_name, limit=None, batch_
             for i, instruction in enumerate(instructions):
                 response_ids = output_ids[i][tokenized.input_ids.shape[1]:]
                 response = tokenizer.decode(response_ids, skip_special_tokens=True)
+
+                if batch_start == 0 and i == 0:  # Only print first response for debugging
+                    print(f"DEBUG - Input length: {tokenized.input_ids.shape[1]}, Output length: {len(output_ids[i])}")
+                    print(f"DEBUG - Response IDs shape: {response_ids.shape}, Response length: {len(response)}")
+                    print(f"DEBUG - First response: {response[:200]}...")
+                
+                # Warn about empty responses
+                if len(response.strip()) == 0:
+                    print(f"WARNING: Empty response generated for instruction: {instruction[:100]}...")
                 
                 output_entry = {
                     'instruction': instruction,
