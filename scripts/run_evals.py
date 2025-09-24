@@ -6,6 +6,15 @@ Usage:
 LMEval:
 python scripts/run_evals.py --eval_type lm_eval --runs pious-wildflower-11 --tasks mmlu truthfulqa gsm8k --with_adapter --print_results
 
+LMEval with Feature Ablation:
+python scripts/run_evals.py --eval_type lm_eval --runs pious-wildflower-11 --tasks mmlu truthfulqa gsm8k --with_adapter --print_results \
+    --alignment_classification_file /root/feature-steering-RL/outputs/12-gemmascope-res-65k__l0-21_alignment_classified_deepseek-v3-0324.json \
+    --style_classification_file /root/feature-steering-RL/outputs/12-gemmascope-res-65k__l0-21_formatting_classified_deepseek-v3-0324.json
+
+LMEval with Custom Ablation:
+python scripts/run_evals.py --eval_type lm_eval --runs pious-wildflower-11 --tasks mmlu truthfulqa gsm8k --with_adapter --print_results \
+    --custom_ablation "no_features_1_2_3:1,2,3" "no_features_10_20:10,20"
+
 AlpacaEval:
 python scripts/run_evals.py --eval_type alpaca --runs pious-wildflower-11 --with_adapter
 """
@@ -33,6 +42,11 @@ def main():
 
     # AlpacaEval specific
     parser.add_argument("--annotator", default="alpaca_eval_gpt4", help="AlpacaEval annotator to use.")
+    
+    # Feature ablation specific (for lm_eval only)
+    parser.add_argument("--alignment_classification_file", type=str, help="Path to alignment feature classification JSON file.")
+    parser.add_argument("--style_classification_file", type=str, help="Path to style feature classification JSON file.")
+    parser.add_argument("--custom_ablation", nargs="+", help="Custom ablation experiments in format 'name:feature1,feature2,feature3'.")
 
     args = parser.parse_args()
 
@@ -50,17 +64,36 @@ def main():
         else:
             limit = args.limit
 
+        # Parse custom ablation experiments
+        ablation_experiments = None
+        if args.custom_ablation:
+            ablation_experiments = []
+            for exp in args.custom_ablation:
+                if ':' in exp:
+                    name, features_str = exp.split(':', 1)
+                    features = [int(f.strip()) for f in features_str.split(',') if f.strip()]
+                    ablation_experiments.append((name, features))
+                else:
+                    print(f"Warning: Invalid custom ablation format '{exp}'. Expected 'name:feature1,feature2,...'")
+
         results = run_lm_eval(
             runs=args.runs,
             tasks=args.tasks,
             limit=limit,
             with_adapter=args.with_adapter,
-            full_ft=args.full_ft
+            full_ft=args.full_ft,
+            alignment_classification_file=args.alignment_classification_file,
+            style_classification_file=args.style_classification_file,
+            ablation_experiments=ablation_experiments
         )
         if args.print_results:
             pretty_results(results)
 
     elif args.eval_type == "alpaca":
+        # AlpacaEval doesn't support ablation experiments yet
+        if args.alignment_classification_file or args.style_classification_file or args.custom_ablation:
+            print("Warning: Feature ablation is not supported for AlpacaEval. Ignoring ablation parameters.")
+        
         limit = int(args.limit) if args.limit else None
         results = run_alpaca_eval(
             runs=args.runs,
