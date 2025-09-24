@@ -61,12 +61,25 @@ def verify_model_state(hooked_model, exp_name: str, with_adapter: bool, full_ft:
         print(f"  - Device: {adapter.device if hasattr(adapter, 'device') else 'N/A'}")
         print(f"  - Dtype: {adapter.dtype if hasattr(adapter, 'dtype') else 'N/A'}")
         
-        # Check if steering is actually enabled
+        # Check if steering is actually enabled by comparing current hook with adapter
         hook_name = adapter.cfg.hook_name if hasattr(adapter, 'cfg') else 'unknown'
         current_hook = hooked_model._get_deep_attr(hooked_model.model, hook_name) if hasattr(hooked_model, '_get_deep_attr') else None
         is_steering_active = current_hook is adapter if current_hook else False
+        original_hook = getattr(hooked_model, '_original_hook_point', None)
+        is_baseline_mode = current_hook is original_hook if original_hook else False
+        
         print(f"  - Steering active: {is_steering_active}")
+        print(f"  - Baseline mode (no steering): {is_baseline_mode}")
         print(f"  - Hook name: {hook_name}")
+        
+        # Additional verification for baseline
+        if exp_name == "baseline":
+            if is_steering_active:
+                print(f"  - WARNING: Baseline should have steering disabled, but it's still active!")
+            elif is_baseline_mode:
+                print(f"  - CORRECT: Baseline has steering properly disabled")
+        elif not is_steering_active:
+            print(f"  - WARNING: Non-baseline experiment should have steering enabled, but it's disabled!")
     else:
         print(f"Model State Verification for {exp_name}: No adapter found")
 
@@ -162,11 +175,20 @@ def run_eval(runs, tasks, limit=0.01, with_adapter=True, full_ft=False,
             print(f"\n=== Running experiment: {exp_name} for run: {run} ===")
             print(f"Masking {len(masked_features)} features")
             
-            # Always clear masked features first, then set new ones if needed
-            if hasattr(hooked_model, 'clear_masked_features') and with_adapter and not full_ft:
-                hooked_model.clear_masked_features()  # Clear any previous masking
-                if masked_features:  # Only set masking if we have features to mask
-                    hooked_model.set_masked_features(masked_features)
+            # Handle baseline vs ablation experiments differently
+            if hasattr(hooked_model, 'sae_adapter') and with_adapter and not full_ft:
+                if exp_name == "baseline":
+                    # For baseline: disable steering completely
+                    hooked_model.disable_steering()
+                    print(f"Baseline experiment: steering disabled completely")
+                else:
+                    # For ablation experiments: ensure steering is enabled, then apply masking
+                    hooked_model.enable_steering()
+                    hooked_model.clear_masked_features()  # Clear any previous masking
+                    if masked_features:  # Only set masking if we have features to mask
+                        hooked_model.set_masked_features(masked_features)
+                    print(f"Ablation experiment: steering enabled with {len(masked_features)} features masked")
+                
                 print(f"Active masked features: {len(hooked_model.get_masked_features()) if hasattr(hooked_model, 'get_masked_features') else 'N/A'}")
                 
                 # Additional debugging for baseline case
