@@ -15,6 +15,74 @@ from transformers import AutoTokenizer
 import alpaca_eval
 
 
+def load_classification_labels(classification_file: str) -> dict[str, list[int]]:
+    """
+    Load feature classification labels from DeepSeek JSON file.
+    
+    Returns:
+        Dict with 'related' and 'not-related' keys containing lists of feature indices
+    """
+    print(f"Loading classification labels from: {classification_file}")
+    
+    with open(classification_file, 'r') as f:
+        classifications = json.load(f)
+    
+    related_features = []
+    not_related_features = []
+    
+    for item in classifications:
+        # Extract feature index from feature_id like "gemma-2-2b-12-gemmascope-res-65k-53844"
+        feature_id = item['feature_id']
+        feature_index = int(feature_id.split('-')[-1])
+        
+        if item['label'] == 'related':
+            related_features.append(feature_index)
+        else:
+            not_related_features.append(feature_index)
+    
+    print(f"Found {len(related_features)} related features, {len(not_related_features)} not-related features")
+    
+    return {
+        'related': sorted(related_features),
+        'not-related': sorted(not_related_features)
+    }
+
+def verify_model_state(hooked_model, exp_name: str, with_adapter: bool, full_ft: bool):
+    """Verify and log model state for debugging consistency issues."""
+    if not with_adapter or full_ft:
+        return
+    
+    if hasattr(hooked_model, 'sae_adapter'):
+        adapter = hooked_model.sae_adapter
+        print(f"Model State Verification for {exp_name}:")
+        print(f"  - Has adapter: True")
+        print(f"  - Masked features: {len(adapter.get_masked_features()) if hasattr(adapter, 'get_masked_features') else 'N/A'}")
+        print(f"  - Steering fraction: {getattr(adapter, 'steering_fraction', 1.0)}")
+        print(f"  - Device: {adapter.device if hasattr(adapter, 'device') else 'N/A'}")
+        print(f"  - Dtype: {adapter.dtype if hasattr(adapter, 'dtype') else 'N/A'}")
+        
+        # Check if steering is actually enabled by comparing current hook with adapter
+        hook_name = adapter.cfg.hook_name if hasattr(adapter, 'cfg') else 'unknown'
+        current_hook = hooked_model._get_deep_attr(hooked_model.model, hook_name) if hasattr(hooked_model, '_get_deep_attr') else None
+        is_steering_active = current_hook is adapter if current_hook else False
+        original_hook = getattr(hooked_model, '_original_hook_point', None)
+        is_baseline_mode = current_hook is original_hook if original_hook else False
+        
+        print(f"  - Steering active: {is_steering_active}")
+        print(f"  - Baseline mode (no steering): {is_baseline_mode}")
+        print(f"  - Hook name: {hook_name}")
+        
+        # Additional verification for baseline
+        if exp_name == "baseline":
+            if is_steering_active:
+                print(f"  - WARNING: Baseline should have steering disabled, but it's still active!")
+            elif is_baseline_mode:
+                print(f"  - CORRECT: Baseline has steering properly disabled")
+        elif not is_steering_active:
+            print(f"  - WARNING: Non-baseline experiment should have steering enabled, but it's disabled!")
+    else:
+        print(f"Model State Verification for {exp_name}: No adapter found")
+
 
 def load_model_and_adapter(run, with_adapter=True, full_ft=False, wandb_project="Gemma2-2B-new-arch"):
     """Load model and adapter using the same logic as evals.py"""
@@ -65,7 +133,7 @@ def load_model_and_adapter(run, with_adapter=True, full_ft=False, wandb_project=
     tokenizer = base_model.tokenizer
     return hooked_model, tokenizer
 
-def generate_model_outputs(hooked_model, tokenizer, run_name, limit=None, batch_size=64):
+def generate_model_outputs(hooked_model, tokenizer, run_name, exp_name="baseline", limit=None, batch_size=64):
     """Generate outputs for AlpacaEval dataset using our model with batching"""
     import datasets
 
@@ -76,7 +144,7 @@ def generate_model_outputs(hooked_model, tokenizer, run_name, limit=None, batch_
         eval_data = eval_data.select(range(limit))
     
     model_outputs = []
-    output_filename = f"model_outputs_{run_name}.json"
+    output_filename = f"model_outputs_{run_name}_{exp_name}.json"
     
     print(f"Generating outputs for {len(eval_data)} examples with batch size {batch_size}...")
     print(f"Saving outputs to: {output_filename}")
@@ -145,7 +213,7 @@ def generate_model_outputs(hooked_model, tokenizer, run_name, limit=None, batch_
                 output_entry = {
                     'instruction': instruction,
                     'output': response,
-                    'generator': f"hooked_model_{run_name}"
+                    'generator': f"hooked_model_{run_name}_{exp_name}"
                 }
                 model_outputs.append(output_entry)
                 batch_outputs.append(output_entry)
@@ -156,7 +224,7 @@ def generate_model_outputs(hooked_model, tokenizer, run_name, limit=None, batch_
                 json.dump(model_outputs, f, indent=2)
             
             if wandb.run is not None:
-                artifact = wandb.Artifact(f"model_outputs_{run_name}", type="model_outputs")
+                artifact = wandb.Artifact(f"model_outputs_{run_name}_{exp_name}", type="model_outputs")
                 artifact.add_file(output_filename)
                 wandb.log_artifact(artifact)
                 
@@ -195,48 +263,134 @@ def generate_model_outputs(hooked_model, tokenizer, run_name, limit=None, batch_
     print(f"Model outputs saved to: {output_filename}")
     return model_outputs
 
-def run_alpaca_eval(runs, with_adapter=True, full_ft=False, annotator="alpaca_eval_gpt4", limit=None):
-    """Run AlpacaEval evaluation on the specified runs"""
+def run_alpaca_eval(runs, with_adapter=True, full_ft=False, annotator="alpaca_eval_gpt4", limit=None,
+                    alignment_classification_file=None, style_classification_file=None,
+                    ablation_experiments=None):
+    """Run AlpacaEval evaluation on the specified runs with ablation experiments"""
 
     load_dotenv()
     wandb.login(key=os.getenv("WANDB_API_KEY"))
     wandb.init(entity="feature-steering-RL", project="alpaca-eval")
     
-    results = {}
-    results_file = "alpaca_eval_results.json"
+    # Load classification labels if provided for ablation
+    alignment_features = []
+    style_features = []
+    if alignment_classification_file:
+        alignment_labels = load_classification_labels(alignment_classification_file)
+        alignment_features = alignment_labels['related']
+    if style_classification_file:
+        style_labels = load_classification_labels(style_classification_file)
+        style_features = style_labels['related']
+    
+    # Define ablation experiments
+    if ablation_experiments is None and (alignment_features or style_features):
+        # Default ablation experiments if features are provided
+        both_features = sorted(list(set(alignment_features) | set(style_features)))
+        ablation_experiments = [
+            ("baseline", []),  # Always run baseline first
+            ("no_alignment", alignment_features),
+            ("no_style", style_features),
+            ("no_both", both_features),
+        ]
+        print(f"Feature overlap analysis:")
+        print(f"  Alignment features: {len(alignment_features)}")
+        print(f"  Style features: {len(style_features)}")
+        print(f"  Union (both): {len(both_features)}")
+        print(f"  Overlap: {len(alignment_features) + len(style_features) - len(both_features)}")
+    elif ablation_experiments is None:
+        # No ablation, just run baseline
+        ablation_experiments = [("baseline", [])]
+    else:
+        # Ensure baseline is first if custom ablation experiments are provided
+        baseline_exists = any(exp[0] == "baseline" for exp in ablation_experiments)
+        if not baseline_exists:
+            ablation_experiments = [("baseline", [])] + ablation_experiments
+        else:
+            # Move baseline to front if it exists
+            baseline_exp = next((exp for exp in ablation_experiments if exp[0] == "baseline"), None)
+            if baseline_exp:
+                ablation_experiments = [baseline_exp] + [exp for exp in ablation_experiments if exp[0] != "baseline"]
+
+    summary_results = {}
     
     for run in runs:
-        print(f"=" * 50)
-        print(f"Running AlpacaEval for: {run}")
-        print(f"=" * 50)
+        print(f"##### Running AlpacaEval for run: {run} #####")
+        print("=" * 30)
         
         hooked_model, tokenizer = load_model_and_adapter(run, with_adapter, full_ft)
         
-        model_outputs = generate_model_outputs(hooked_model, tokenizer, run, limit)
+        # Run ablation experiments for this run
+        run_results = {}
+        for exp_name, masked_features in ablation_experiments:
+            print(f"\n=== Running experiment: {exp_name} for run: {run} ===")
+            print(f"Masking {len(masked_features)} features")
+            
+            # Handle baseline vs ablation experiments differently
+            if hasattr(hooked_model, 'sae_adapter') and with_adapter and not full_ft:
+                if exp_name == "baseline":
+                    # For baseline: disable steering completely
+                    hooked_model.disable_steering()
+                    print(f"Baseline experiment: steering disabled completely")
+                else:
+                    # For ablation experiments: ensure steering is enabled, then apply masking
+                    hooked_model.enable_steering()
+                    hooked_model.clear_masked_features()  # Clear any previous masking
+                    if masked_features:  # Only set masking if we have features to mask
+                        hooked_model.set_masked_features(masked_features)
+                    print(f"Ablation experiment: steering enabled with {len(masked_features)} features masked")
+                
+                print(f"Active masked features: {len(hooked_model.get_masked_features()) if hasattr(hooked_model, 'get_masked_features') else 'N/A'}")
+                
+                # Additional debugging for baseline case
+                if exp_name == "baseline":
+                    print(f"BASELINE DEBUG:")
+                    print(f"  - Steering enabled: {hasattr(hooked_model.sae_adapter, '_original_hook_point')}")
+                    print(f"  - Adapter device: {hooked_model.sae_adapter.device if hasattr(hooked_model.sae_adapter, 'device') else 'N/A'}")
+                    print(f"  - Base model device: {hooked_model.model.cfg.device}")
+                    print(f"  - Masked features count: {len(hooked_model.get_masked_features())}")
+                    print(f"  - Steering fraction: {getattr(hooked_model.sae_adapter, 'steering_fraction', 'N/A')}")
+            elif masked_features and not full_ft:
+                print(f"Warning: Cannot mask features - model doesn't support feature masking")
+            
+            # Verify model state for consistency debugging
+            verify_model_state(hooked_model, exp_name, with_adapter, full_ft)
+            
+            model_outputs = generate_model_outputs(hooked_model, tokenizer, run, exp_name, limit)
+            
+            eval_results = alpaca_eval.evaluate(
+                model_outputs=model_outputs,
+                annotators_config=annotator,
+                name=f"{run}_{exp_name}_{'with_adapter' if with_adapter else 'no_adapter'}",
+                output_path=f"alpaca_eval_results_{run}_{exp_name}",
+                max_instances=limit,
+                is_return_instead_of_print=True,
+            )
+            
+            # Store results with experiment name
+            run_results[exp_name] = eval_results
+            
+            # Log to wandb with experiment-specific metrics
+            if len(ablation_experiments) > 1:
+                wandb.log({
+                    f"eval/{run}/{exp_name}/num_masked": len(masked_features),
+                    f"experiment": exp_name,
+                    f"run": run
+                })
         
-        eval_results = alpaca_eval.evaluate(
-            model_outputs=model_outputs,
-            annotators_config=annotator,
-            name=f"{run}_{'with_adapter' if with_adapter else 'no_adapter'}",
-            output_path=f"alpaca_eval_results_{run}",
-            max_instances=limit,
-            is_return_instead_of_print=True,
-        )
-        
-        results[run] = eval_results
-        
-        with open(results_file, 'w') as f:
-            json.dump(results, f, indent=2)
-        
-        artifact = wandb.Artifact("alpaca_eval_results", type="results")
-        artifact.add_file(results_file)
-        wandb.log_artifact(artifact)
-
-        wandb.log(results)
+        summary_results[run] = run_results
         
         del hooked_model, tokenizer
         torch.cuda.empty_cache()
     
+    results_file = "alpaca_eval_results.json"
+    with open(results_file, 'w') as f:
+        json.dump(summary_results, f, indent=2)
+    
+    artifact = wandb.Artifact("alpaca_eval_results", type="results")
+    artifact.add_file(results_file)
+    wandb.log_artifact(artifact)
+
+    wandb.log(summary_results)
     os.remove(results_file)
 
-    return results 
+    return summary_results 

@@ -221,9 +221,8 @@ class BaseHookedModel(nn.Module):
             # HookedTransformer doesn't use this parameter
             kwargs.pop('pad_token_id')
         
-        if 'attention_mask' in kwargs:
-            # HookedTransformer doesn't use attention_mask
-            kwargs.pop('attention_mask')
+        # Capture and remove attention_mask (HookedTransformer doesn't accept it)
+        attention_mask = kwargs.pop('attention_mask', None)
         
         if 'stopping_criteria' in kwargs:
             # HookedTransformer doesn't use stopping_criteria
@@ -235,7 +234,43 @@ class BaseHookedModel(nn.Module):
             # Map to HookedTransformer equivalent if needed
             if use_cache and 'use_past_kv_cache' not in kwargs:
                 kwargs['use_past_kv_cache'] = use_cache
-            
+        
+        # If we received an attention mask for a batched tokens input, trim padding and
+        # re-route through string inputs to avoid EOS-as-padding issues.
+        if (
+            attention_mask is not None
+            and len(args) > 0
+            and isinstance(args[0], torch.Tensor)
+            and args[0].dim() == 2
+        ):
+            tokens_batch: torch.Tensor = args[0]
+            # Ensure mask is on CPU for sum, but keep indexing on original device
+            if attention_mask.dim() != 2 or attention_mask.shape != tokens_batch.shape:
+                # Fallback: ignore malformed masks
+                pass
+            else:
+                # Compute true lengths from mask and decode each example
+                lengths = attention_mask.sum(dim=1).tolist()
+                input_texts = []
+                for row_idx, length in enumerate(lengths):
+                    length_int = int(length)
+                    # Guard against zero-length sequences
+                    if length_int <= 0:
+                        # Empty input: decode as empty string
+                        input_texts.append("")
+                        continue
+                    seq_tokens = tokens_batch[row_idx, :length_int]
+                    text = self.tokenizer.decode(seq_tokens, skip_special_tokens=False)
+                    input_texts.append(text)
+                # Replace positional tokens arg with list[str]
+                args = (input_texts,)
+                # Ensure we get tokens back for downstream code that expects tensors
+                if 'return_type' not in kwargs:
+                    kwargs['return_type'] = 'tokens'
+                # Left-pad during internal tokenization to ensure last token is from content
+                if 'padding_side' not in kwargs:
+                    kwargs['padding_side'] = 'left'
+        
         return self.model.generate(*args, **kwargs)
     
     def tie_weights(self):

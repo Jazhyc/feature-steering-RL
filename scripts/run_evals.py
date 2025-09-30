@@ -17,6 +17,15 @@ python scripts/run_evals.py --eval_type lm_eval --runs pious-wildflower-11 --tas
 
 AlpacaEval:
 python scripts/run_evals.py --eval_type alpaca --runs pious-wildflower-11 --with_adapter
+
+AlpacaEval with Feature Ablation:
+python scripts/run_evals.py --eval_type alpaca --runs pious-wildflower-11 --with_adapter \
+    --alignment_classification_file /root/feature-steering-RL/outputs/12-gemmascope-res-65k__l0-21_alignment_classified_deepseek-v3-0324.json \
+    --style_classification_file /root/feature-steering-RL/outputs/12-gemmascope-res-65k__l0-21_formatting_classified_deepseek-v3-0324.json
+
+AlpacaEval with Custom Ablation:
+python scripts/run_evals.py --eval_type alpaca --runs pious-wildflower-11 --with_adapter \
+    --custom_ablation "no_features_1_2_3:1,2,3" "no_features_10_20:10,20"
 """
 import sys
 import os
@@ -90,29 +99,55 @@ def main():
             pretty_results(results)
 
     elif args.eval_type == "alpaca":
-        # AlpacaEval doesn't support ablation experiments yet
-        if args.alignment_classification_file or args.style_classification_file or args.custom_ablation:
-            print("Warning: Feature ablation is not supported for AlpacaEval. Ignoring ablation parameters.")
-        
         limit = int(args.limit) if args.limit else None
+        
+        # Parse custom ablation experiments
+        ablation_experiments = None
+        if args.custom_ablation:
+            ablation_experiments = []
+            for exp in args.custom_ablation:
+                if ':' in exp:
+                    name, features_str = exp.split(':', 1)
+                    features = [int(f.strip()) for f in features_str.split(',') if f.strip()]
+                    ablation_experiments.append((name, features))
+                else:
+                    print(f"Warning: Invalid custom ablation format '{exp}'. Expected 'name:feature1,feature2,...'")
+        
         results = run_alpaca_eval(
             runs=args.runs,
             with_adapter=args.with_adapter,
             full_ft=args.full_ft,
             annotator=args.annotator,
-            limit=limit
+            limit=limit,
+            alignment_classification_file=args.alignment_classification_file,
+            style_classification_file=args.style_classification_file,
+            ablation_experiments=ablation_experiments
         )
         
         print("\n" + "=" * 50)
         print("ALPACA EVAL RESULTS SUMMARY")
         print("=" * 50)
         
-        for run, result in results.items():
+        for run, run_data in results.items():
             print(f"\nRun: {run}")
-            if isinstance(result, dict) and 'win_rate' in result:
-                print(f"Win Rate: {result['win_rate']:.3f}")
+            print("=" * 30)
+            
+            # Check if run_data contains ablation experiments or direct results
+            if isinstance(run_data, dict) and any(isinstance(v, dict) for v in run_data.values()):
+                # This is the new format with ablation experiments
+                for exp_name, result in run_data.items():
+                    print(f"  Experiment: {exp_name}")
+                    if isinstance(result, dict) and 'win_rate' in result:
+                        print(f"    Win Rate: {result['win_rate']:.3f}")
+                    else:
+                        print(f"    Result: {result}")
+                    print("  " + "-" * 25)
             else:
-                print(f"Result: {result}")
+                # This is the old format - direct results
+                if isinstance(run_data, dict) and 'win_rate' in run_data:
+                    print(f"  Win Rate: {run_data['win_rate']:.3f}")
+                else:
+                    print(f"  Result: {run_data}")
         
         print("\nDetailed results saved in individual run directories.")
 
