@@ -48,7 +48,7 @@ def load_model_and_tokenizer(model_config: DictConfig) -> tuple:
     model = HookedTransformer.from_pretrained_no_processing(
         model_name=model_config.name,
         device=device, 
-        torch_dtype=dtype,
+        dtype=dtype,
         attn_implementation="sdpa", # Compile with SDPA is faster than FA2?
     )
     

@@ -117,7 +117,7 @@ class BaseHookedModel(nn.Module):
         base_model = HookedTransformer.from_pretrained_no_processing(
             base_model_name,
             device=device,
-            torch_dtype=torch_dtype,
+            dtype=torch_dtype,
             attn_implementation="sdpa",
             **kwargs
         )
