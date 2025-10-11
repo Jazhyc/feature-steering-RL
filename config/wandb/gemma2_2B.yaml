@@ -1,9 +1,9 @@
 # Weights & Biases Configuration
-project: "Gemma2-2B-newarch-sparsitysweep"
+project: "Gemma2-2B-memoryreduction"
 entity: "feature-steering-RL"
 dir: "logs"
 
 # Optional WandB settings
 tags: []
-notes: "layer 12, l1 pen=0.4"
+notes: "turn off bf16"
 mode: "online"
