@@ -1,0 +1,9 @@
+# Weights & Biases Configuration for Gemma2-9B
+project: "Gemma2-9B"
+entity: "feature-steering-RL"
+dir: "logs"
+
+# Optional WandB settings
+tags: []
+notes: ""
+mode: "online"

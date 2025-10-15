@@ -1,0 +1,21 @@
+# Architecture Configuration for Gemma2-9B with SAE
+model:
+  name: "gemma-2-9b-it" # Name on transformer_lens
+  device: "cuda"
+  dtype: "bfloat16"
+
+sae:
+  release: "gemma-scope-9b-pt-res"
+  sae_id: "layer_20/width_65k/average_l0_11"
+  activation_type: "soft_threshold"  # Options: "soft_threshold", "jump_relu", "relu"
+  initial_threshold: 1e-6  # Used for both soft_threshold and jump_relu
+  bandwidth: 0.001  # Only used for jump_relu
+  dtype: "bfloat16"
+
+dataset:
+  name: "princeton-nlp/llama3-ultrafeedback-armorm"
+  train_split: "train"
+  eval_split: "test"
+  sample_size: null  # Set to a number to limit dataset size for testing
+  dataset_num_proc: 20
+  chat_template: "{{ bos_token }}{% if messages[0]['role'] == 'system' %}{% set system_message = messages[0]['content'] | trim + '\n\n' %}{% set messages = messages[1:] %}{% else %}{% set system_message = '' %}{% endif %}{% for message in messages %}{% if loop.index0 == 0 %}{% set content = system_message + message['content'] %}{% else %}{% set content = message['content'] %}{% endif %}{% if (message['role'] == 'assistant') %}{% set role = 'model' %}{% else %}{% set role = message['role'] %}{% endif %}{{ '<start_of_turn>' + role + '\n' + content | trim + '<end_of_turn>\n' }}{% endfor %}{% if add_generation_prompt %}{{'<start_of_turn>model\n'}}{% endif %}"
