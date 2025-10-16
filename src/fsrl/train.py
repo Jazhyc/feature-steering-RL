@@ -280,6 +280,9 @@ def main(cfg: DictConfig) -> None:
     print("Starting training...")
     trainer.train()
     
+    # Evaluate the final model
+    trainer.evaluate()
+    
     # Save the trained model/adapter
     run_name = wandb.run.name if wandb.run else None
     if use_sae:
