@@ -1,4 +1,6 @@
 """
+!Do not use this script; it is misleading
+
 Fetch and cache Neuronpedia feature explanations for a given SAE.
 
 - If an adapter path is provided, this script will load the SAEAdapter to
@@ -45,9 +47,16 @@ def resolve_ids_from_adapter(adapter_path: Path, device: str = "cpu") -> Tuple[s
     neuronpedia_id: Optional[str] = getattr(sae.cfg, "neuronpedia_id", None)
     if model_id is None or neuronpedia_id is None:
         raise RuntimeError("Could not resolve model_name and neuronpedia_id from the loaded adapter.")
-    sae_id = neuronpedia_id.split("/")[-1]
+    # Extract sae_id from neuronpedia_id by removing the release prefix
+    # e.g., "gemma-scope-9b-pt-res/layer_12/width_16k/average_l0_19" -> "layer_12/width_16k/average_l0_19"
+    release = getattr(sae.cfg, "release", None)
+    if release and neuronpedia_id.startswith(f"{release}/"):
+        sae_id = neuronpedia_id[len(release) + 1:]  # +1 for the '/'
+    else:
+        # Fallback: use base_sae_id if available
+        sae_id = getattr(sae.cfg, "sae_id", neuronpedia_id.split("/")[-1])
     extra = {
-        "release": getattr(sae.cfg, "release", None),
+        "release": release,
         "base_sae_id": getattr(sae.cfg, "sae_id", None),
         "neuronpedia_id": neuronpedia_id,
     }
@@ -104,8 +113,10 @@ def build_s3_url(model_id: str, release: Optional[str], base_sae_id: Optional[st
     if not (layer_num and family_slug):
         return None
 
-    filename = f"{model_slug}_{layer_num}-{family_slug}.json"
-    return f"https://neuronpedia-exports.s3.amazonaws.com/explanations-only/{filename}"
+    # New S3 format: https://neuronpedia-datasets.s3.us-east-1.amazonaws.com/v1/{model}/{layer}-{family}/explanations.jsonl
+    # We'll try the direct explanations.jsonl file
+    s3_path = f"{model_slug}/{layer_num}-{family_slug}/explanations.jsonl"
+    return f"https://neuronpedia-datasets.s3.us-east-1.amazonaws.com/v1/{s3_path}"
 
 
 def fetch_explanations(model_id: str, sae_id: str, base_url: str = DEFAULT_BASE_URL, timeout: int = 60,

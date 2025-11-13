@@ -298,6 +298,8 @@ class SAEAdapter(SAE):
         # Manually add the release info to the config for later saving.
         instance.cfg.release = release
         instance.cfg.sae_id = sae_id
+        # Construct neuronpedia_id from release and sae_id for API access
+        instance.cfg.neuronpedia_id = f"{release}/{sae_id}"
         
         # Load the state dict of the base SAE; `strict=False` ignores missing adapter keys
         instance.load_state_dict(sae_temp.state_dict(), strict=False)
@@ -380,6 +382,8 @@ class SAEAdapter(SAE):
             "base_sae_release": self.cfg.release,
             "base_sae_id": self.cfg.sae_id,
             "activation_type": self.activation_type,
+            "model_name": self.cfg.model_name,
+            "neuronpedia_id": f"{self.cfg.release}/{self.cfg.sae_id}",
         }
         
         # Save activation-specific config
@@ -429,6 +433,13 @@ class SAEAdapter(SAE):
             force_download=force_download,
             **adapter_kwargs
         )
+        
+        # Override with saved model_name and neuronpedia_id if available in config
+        # (for backward compatibility and future configs)
+        if "model_name" in config:
+            instance.cfg.model_name = config["model_name"]
+        if "neuronpedia_id" in config:
+            instance.cfg.neuronpedia_id = config["neuronpedia_id"]
 
         # Load the locally saved adapter weights
         state_dict = load_file(path / "adapter_weights.safetensors", device=device)

@@ -1,5 +1,5 @@
 # Weights & Biases Configuration for Gemma2-9B
-project: "Gemma2-9B"
+project: "Gemma2-9B-layer-12"
 entity: "feature-steering-RL"
 dir: "logs"
 
