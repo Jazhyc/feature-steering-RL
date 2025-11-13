@@ -1,5 +1,5 @@
 # Weights & Biases Configuration
-project: "Gemma2-2B-muon"
+project: "Gemma2-2B-emergency"
 entity: "feature-steering-RL"
 dir: "logs"
 

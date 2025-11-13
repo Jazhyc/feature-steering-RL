@@ -120,12 +120,12 @@ class SAEAdapter(SAE):
         
     def _initialize_adapter(self):
         """
-        Xavier initialization for adapter weights.
+        Kaiming (He) initialization for adapter weights (suitable for ReLU-like activations).
         For JumpReLU: biases are initialized to the initial threshold
         For soft threshold: biases are initialized to zero (threshold is separate)
         For ReLU: biases are initialized to zero
         """
-        nn.init.xavier_uniform_(self.adapter_linear.weight)
+        nn.init.kaiming_uniform_(self.adapter_linear.weight, nonlinearity='relu')
 
         if self.activation_type == "jump_relu":
             # Use the threshold value but ensure it matches the bias dtype
@@ -266,7 +266,8 @@ class SAEAdapter(SAE):
                     reconstruct_clean = self.decode(feature_acts)
                 sae_error = self.hook_sae_error(x - reconstruct_clean)
 
-        fused_feature_acts = feature_acts + scaled_steering
+        fused_feature_acts = feature_acts + steering_vector
+        fused_feature_acts = F.relu(fused_feature_acts) # Prevents negative feature activations which should not be possible
         fused_feature_acts = self.hook_sae_fusion(fused_feature_acts)
 
         # Decode the modulated features back into the residual stream
