@@ -241,6 +241,7 @@ class SAEAdapter(SAE):
 
         # Apply feature masking for ablation studies (turn off specific features)
         steered_activations = self._apply_feature_masking(steered_activations)
+        steered_activations = steered_activations * self.steering_magnitude.to(steered_activations.dtype)
 
         # Apply hook and compute statistics
         steered_activations = self.hook_sae_adapter(steered_activations)
@@ -256,9 +257,6 @@ class SAEAdapter(SAE):
         
         # Adapter Path (Trainable)
         steering_vector = self.get_steering_vector(x)
-        
-        # Scale steering vector by magnitude parameter
-        scaled_steering = steering_vector * self.steering_magnitude.to(steering_vector.dtype)
         
         # Compute Error for clean intervention
         # Error is based on the clean, unsteered path
