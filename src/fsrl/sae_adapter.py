@@ -41,8 +41,8 @@ class SAEAdapter(SAE):
         
         self.adapter_linear = nn.Linear(self.cfg.d_in, self.cfg.d_sae, bias=True)
         
-        # Steering magnitude scalar (initialized to 0 so steering doesn't affect model initially)
-        self.steering_magnitude = nn.Parameter(torch.tensor(0.0, dtype=torch.float32))
+        # Steering magnitude (initialized to 0 so steering doesn't affect model initially)
+        self.steering_magnitude = nn.Parameter(torch.zeros(self.cfg.d_sae, dtype=torch.float32))
         
         # Activation function configuration
         self.activation_type = kwargs.get("activation_type", "soft_threshold")  # Default to soft threshold
@@ -459,7 +459,7 @@ class SAEAdapter(SAE):
         if 'steering_magnitude' in state_dict:
             instance.steering_magnitude.data = state_dict['steering_magnitude']
         else:
-            instance.steering_magnitude.data = torch.tensor(1.0, dtype=torch.float32, device=device)
+            instance.steering_magnitude.data = torch.ones(instance.cfg.d_sae, dtype=torch.float32, device=device)
         
         # Load threshold parameters based on what's in the state dict
         if 'log_threshold' in state_dict:
