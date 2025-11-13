@@ -3,7 +3,7 @@
    "enabled": true
   },
   "optimizer": {
-    "type": "AdamW",
+    "type": "Muon",
     "params": {
       "lr": "auto",
       "betas": "auto",

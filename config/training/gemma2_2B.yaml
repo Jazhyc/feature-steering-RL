@@ -2,7 +2,7 @@
 
 # Training Configuration
 output_dir: "logs/training_run"
-num_train_epochs: 10
+num_train_epochs: 1
 learning_rate: 5e-6
 
 # Batch size configuration
@@ -17,7 +17,9 @@ dataset_num_proc: 20
 bf16: true
 torch_compile: true
 lr_scheduler_type: cosine
-warmup_ratio: 0.1
+warmup_ratio: 0.01
+adam_beta1: 0.9
+adam_beta2: 0.98
 gradient_accumulation_steps: 16
 activation_offloading: false
 deepspeed: config/deepspeed.json

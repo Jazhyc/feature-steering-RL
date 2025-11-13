@@ -1,9 +1,9 @@
 # Weights & Biases Configuration
-project: "Gemma2-2B-memoryreduction"
+project: "Gemma2-2B-emergency"
 entity: "feature-steering-RL"
 dir: "logs"
 
 # Optional WandB settings
 tags: []
-notes: "turn off bf16"
+notes: "canonical model"
 mode: "online"
