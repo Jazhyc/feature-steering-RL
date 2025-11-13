@@ -16,13 +16,17 @@ dependencies = [
     "torch>=2.7.0",
     "torchvision>=0.22.0",
     "transformer-lens>=2.15.4",
-    "transformers>=4.52.4",
+    "transformers==4.52.4",
     "trl>=0.19.1",
     "wandb>=0.20.0",
     "markupsafe==2.1.5",
     "bitsandbytes>=0.46.1",
     "seaborn>=0.13.2",
 ]
+
+[project.optional-dependencies]
+deepspeed = ["deepspeed==0.17.6"]
+
 [build-system]
 requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
@@ -30,8 +34,8 @@ build-backend = "setuptools.build_meta"
 # --- TOOL UV CONFIGURATION ---
 
 [tool.uv]
-# Search all indexes.
-index-strategy = "unsafe-best-match"
+# Use first matching index to respect PyTorch CUDA priority
+index-strategy = "first-index"
 
 override-dependencies = [
   "datasets>=3.0.0",

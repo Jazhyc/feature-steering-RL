@@ -30,5 +30,6 @@
     "reduce_scatter": true
   },
   "train_micro_batch_size_per_gpu": "auto",
-  "gradient_accumulation_steps": "auto"
+  "gradient_accumulation_steps": "auto",
+  "zero_allow_untested_optimizer": true
 }
