@@ -41,6 +41,9 @@ class SAEAdapter(SAE):
         
         self.adapter_linear = nn.Linear(self.cfg.d_in, self.cfg.d_sae, bias=True)
         
+        # Steering magnitude scalar (initialized to 0 so steering doesn't affect model initially)
+        self.steering_magnitude = nn.Parameter(torch.tensor(0.0, dtype=torch.float32))
+        
         # Activation function configuration
         self.activation_type = kwargs.get("activation_type", "soft_threshold")  # Default to soft threshold
         
@@ -117,12 +120,12 @@ class SAEAdapter(SAE):
         
     def _initialize_adapter(self):
         """
-        A simple initialization for the adapter weights and bias.
+        Xavier initialization for adapter weights.
         For JumpReLU: biases are initialized to the initial threshold
         For soft threshold: biases are initialized to zero (threshold is separate)
         For ReLU: biases are initialized to zero
         """
-        nn.init.uniform_(self.adapter_linear.weight, a=-1e-6, b=1e-6)
+        nn.init.xavier_uniform_(self.adapter_linear.weight)
 
         if self.activation_type == "jump_relu":
             # Use the threshold value but ensure it matches the bias dtype
@@ -254,6 +257,9 @@ class SAEAdapter(SAE):
         # Adapter Path (Trainable)
         steering_vector = self.get_steering_vector(x)
         
+        # Scale steering vector by magnitude parameter
+        scaled_steering = steering_vector * self.steering_magnitude.to(steering_vector.dtype)
+        
         # Compute Error for clean intervention
         # Error is based on the clean, unsteered path
         if self.use_error_term:
@@ -262,7 +268,7 @@ class SAEAdapter(SAE):
                     reconstruct_clean = self.decode(feature_acts)
                 sae_error = self.hook_sae_error(x - reconstruct_clean)
 
-        fused_feature_acts = feature_acts + steering_vector
+        fused_feature_acts = feature_acts + scaled_steering
         fused_feature_acts = self.hook_sae_fusion(fused_feature_acts)
 
         # Decode the modulated features back into the residual stream
@@ -308,7 +314,7 @@ class SAEAdapter(SAE):
 
     def get_trainable_parameters(self) -> list[nn.Parameter]:
         """Returns the adapter's trainable parameters for an optimizer."""
-        params = [self.adapter_linear.weight, self.adapter_linear.bias]
+        params = [self.adapter_linear.weight, self.adapter_linear.bias, self.steering_magnitude]
         if self.activation_type == "jump_relu":
             params.append(self.log_threshold)
         elif self.activation_type == "soft_threshold":
@@ -368,6 +374,7 @@ class SAEAdapter(SAE):
         adapter_state_dict = {
             'adapter_linear.weight': self.adapter_linear.weight,
             'adapter_linear.bias': self.adapter_linear.bias,
+            'steering_magnitude': self.steering_magnitude,
         }
         
         # Save threshold parameters based on activation type
@@ -447,6 +454,12 @@ class SAEAdapter(SAE):
         # Load weights normally - the to() method will handle dtype preservation
         instance.adapter_linear.weight.data = state_dict['adapter_linear.weight']
         instance.adapter_linear.bias.data = state_dict['adapter_linear.bias']
+        
+        # Load steering magnitude with backwards compatibility (default to 1.0 if not present)
+        if 'steering_magnitude' in state_dict:
+            instance.steering_magnitude.data = state_dict['steering_magnitude']
+        else:
+            instance.steering_magnitude.data = torch.tensor(1.0, dtype=torch.float32, device=device)
         
         # Load threshold parameters based on what's in the state dict
         if 'log_threshold' in state_dict:
