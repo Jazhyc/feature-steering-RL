@@ -2,7 +2,7 @@
 
 # Training Configuration
 output_dir: "logs/training_run"
-num_train_epochs: 1
+num_train_epochs: 10
 learning_rate: 5e-5
 
 # Batch size configuration
@@ -36,7 +36,7 @@ log_threshold_lr_multiplier: 1e3  # Only used when use_jump_relu is true
 penalty_warmup_ratio: 0.0
 
 # Additional training parameters
-save_steps: 10000
+save_steps: 100000
 logging_steps: 10
 save_total_limit: 2
 eval_strategy: "steps"

@@ -1,9 +1,9 @@
 # Weights & Biases Configuration for Gemma2-9B
-project: "Gemma2-9B-layer-12"
+project: "Gemma2-9B-muon"
 entity: "feature-steering-RL"
 dir: "logs"
 
 # Optional WandB settings
 tags: []
-notes: ""
+notes: "ReLU Sum"
 mode: "online"
