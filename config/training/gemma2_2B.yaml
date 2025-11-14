@@ -3,7 +3,7 @@
 # Training Configuration
 output_dir: "logs/training_run"
 num_train_epochs: 1
-learning_rate: 5e-6
+learning_rate: 5e-5
 
 # Batch size configuration
 per_device_train_batch_size: 2

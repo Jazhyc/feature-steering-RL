@@ -41,8 +41,13 @@ class SAEAdapter(SAE):
         
         self.adapter_linear = nn.Linear(self.cfg.d_in, self.cfg.d_sae, bias=True)
         
-        # Steering magnitude (initialized to 0 so steering doesn't affect model initially)
-        self.steering_magnitude = nn.Parameter(torch.zeros(self.cfg.d_sae, dtype=torch.float32))
+        # Steering magnitude (optional, default: not used)
+        self.use_steering_magnitude = kwargs.get("use_steering_magnitude", False)
+        if self.use_steering_magnitude:
+            # Initialized to 0 so steering doesn't affect model initially
+            self.steering_magnitude = nn.Parameter(torch.zeros(self.cfg.d_sae, dtype=torch.float32))
+        else:
+            self.steering_magnitude = None
         
         # Activation function configuration
         self.activation_type = kwargs.get("activation_type", "soft_threshold")  # Default to soft threshold
@@ -120,19 +125,40 @@ class SAEAdapter(SAE):
         
     def _initialize_adapter(self):
         """
-        Kaiming (He) initialization for adapter weights (suitable for ReLU-like activations).
-        For JumpReLU: biases are initialized to the initial threshold
-        For soft threshold: biases are initialized to zero (threshold is separate)
-        For ReLU: biases are initialized to zero
+        Initialization for adapter weights.
+        
+        If using steering magnitude:
+            - Kaiming (He) initialization for weights (suitable for ReLU-like activations)
+            - For JumpReLU: biases initialized to threshold
+            - For soft threshold/ReLU: biases initialized to zero
+        
+        If not using steering magnitude:
+            - Uniform initialization between -initial_threshold and +initial_threshold
+            - Biases initialized to zero
         """
-        nn.init.kaiming_uniform_(self.adapter_linear.weight, nonlinearity='relu')
+        if self.use_steering_magnitude:
+            # Standard Kaiming initialization
+            nn.init.kaiming_uniform_(self.adapter_linear.weight, nonlinearity='relu')
 
-        if self.activation_type == "jump_relu":
-            # Use the threshold value but ensure it matches the bias dtype
-            threshold_mean = self.adapter_threshold.mean().item()
-            nn.init.constant_(self.adapter_linear.bias, threshold_mean)
+            if self.activation_type == "jump_relu":
+                # Use the threshold value but ensure it matches the bias dtype
+                threshold_mean = self.adapter_threshold.mean().item()
+                nn.init.constant_(self.adapter_linear.bias, threshold_mean)
+            else:
+                # Initialize bias to zero for soft threshold and regular ReLU
+                nn.init.constant_(self.adapter_linear.bias, 0.0)
         else:
-            # Initialize bias to zero for soft threshold and regular ReLU
+            # Uniform initialization with +/- initial_threshold
+            if self.activation_type == "jump_relu":
+                initial_threshold = self.adapter_threshold.mean().item()
+            elif self.activation_type == "soft_threshold":
+                initial_threshold = self.soft_threshold.mean().item()
+            else:
+                # For ReLU without steering magnitude, use a small default threshold
+                initial_threshold = 0.01
+            
+            print(f"Adapter uniform initialization range: +/- {initial_threshold}")
+            nn.init.uniform_(self.adapter_linear.weight, -initial_threshold, initial_threshold)
             nn.init.constant_(self.adapter_linear.bias, 0.0)
 
     def _apply_topk_feature_selection(
@@ -241,7 +267,12 @@ class SAEAdapter(SAE):
 
         # Apply feature masking for ablation studies (turn off specific features)
         steered_activations = self._apply_feature_masking(steered_activations)
-        steered_activations = steered_activations * self.steering_magnitude.to(steered_activations.dtype)
+        
+        # Optionally apply steering magnitude
+        if self.use_steering_magnitude:
+            # Clip steering magnitude to [0, 1] and apply
+            clipped_magnitude = torch.clamp(self.steering_magnitude, min=0.0, max=1.0)
+            steered_activations = steered_activations * clipped_magnitude.to(steered_activations.dtype)
 
         # Apply hook and compute statistics
         steered_activations = self.hook_sae_adapter(steered_activations)
@@ -313,7 +344,11 @@ class SAEAdapter(SAE):
 
     def get_trainable_parameters(self) -> list[nn.Parameter]:
         """Returns the adapter's trainable parameters for an optimizer."""
-        params = [self.adapter_linear.weight, self.adapter_linear.bias, self.steering_magnitude]
+        params = [self.adapter_linear.weight, self.adapter_linear.bias]
+        
+        if self.use_steering_magnitude:
+            params.append(self.steering_magnitude)
+            
         if self.activation_type == "jump_relu":
             params.append(self.log_threshold)
         elif self.activation_type == "soft_threshold":
@@ -373,8 +408,10 @@ class SAEAdapter(SAE):
         adapter_state_dict = {
             'adapter_linear.weight': self.adapter_linear.weight,
             'adapter_linear.bias': self.adapter_linear.bias,
-            'steering_magnitude': self.steering_magnitude,
         }
+        
+        if self.use_steering_magnitude:
+            adapter_state_dict['steering_magnitude'] = self.steering_magnitude
         
         # Save threshold parameters based on activation type
         if self.activation_type == "jump_relu":
@@ -388,6 +425,7 @@ class SAEAdapter(SAE):
             "base_sae_release": self.cfg.release,
             "base_sae_id": self.cfg.sae_id,
             "activation_type": self.activation_type,
+            "use_steering_magnitude": self.use_steering_magnitude,
             "model_name": self.cfg.model_name,
             "neuronpedia_id": f"{self.cfg.release}/{self.cfg.sae_id}",
         }
@@ -423,7 +461,10 @@ class SAEAdapter(SAE):
         elif config.get("use_soft_threshold", False):
             activation_type = "soft_threshold"
         
-        adapter_kwargs = {"activation_type": activation_type}
+        adapter_kwargs = {
+            "activation_type": activation_type,
+            "use_steering_magnitude": config.get("use_steering_magnitude", False)
+        }
         
         if activation_type == "jump_relu":
             adapter_kwargs["bandwidth"] = config.get("bandwidth", 0.001)
@@ -454,11 +495,13 @@ class SAEAdapter(SAE):
         instance.adapter_linear.weight.data = state_dict['adapter_linear.weight']
         instance.adapter_linear.bias.data = state_dict['adapter_linear.bias']
         
-        # Load steering magnitude with backwards compatibility (default to 1.0 if not present)
-        if 'steering_magnitude' in state_dict:
-            instance.steering_magnitude.data = state_dict['steering_magnitude']
-        else:
-            instance.steering_magnitude.data = torch.ones(instance.cfg.d_sae, dtype=torch.float32, device=device)
+        # Load steering magnitude if it's being used
+        if instance.use_steering_magnitude:
+            if 'steering_magnitude' in state_dict:
+                instance.steering_magnitude.data = state_dict['steering_magnitude']
+            else:
+                # Backwards compatibility: default to 1.0 if not present
+                instance.steering_magnitude.data = torch.ones(instance.cfg.d_sae, dtype=torch.float32, device=device)
         
         # Load threshold parameters based on what's in the state dict
         if 'log_threshold' in state_dict:
