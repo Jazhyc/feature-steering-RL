@@ -3,7 +3,7 @@
 # Training Configuration
 output_dir: "logs/training_run"
 num_train_epochs: 10
-learning_rate: 5e-6
+learning_rate: 6e-5
 
 # Batch size configuration
 per_device_train_batch_size: 2
@@ -30,7 +30,7 @@ gamma_beta_ratio: 0.5
 max_prompt_length: 1400
 max_length: 1600
 l0_act_coeff: 0
-l1_act_coeff: 0.02
+l1_act_coeff: 0.01
 l2_act_coeff: 0
 max_grad_norm: 1.0
 log_threshold_lr_multiplier: 1e3  # Only used when use_jump_relu is true
