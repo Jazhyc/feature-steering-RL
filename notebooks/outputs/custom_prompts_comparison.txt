@@ -1,6 +1,6 @@
 FSRL Model Analysis - Custom Prompts Comparison
-Generated on: 2025-09-15 01:30:25
-Model: pious-wildflower-11
+Generated on: 2025-11-15 16:27:36
+Model: mild-resonance-1
 Max new tokens: 256
 ====================================================================================================
 
@@ -23,9 +23,13 @@ UNSTEERED OUTPUT:
 user
 I have 3 apples and give 3 away. What do I have now?
 model
-You would have **0** apples left. 
+You would have **zero** apples left. 
 
-This is a simple addition scenario.  You started with 3 apples and then gave away 3, which means you have zero left. 
+Here's the math:
+
+* You start with 3
+* You give away 3
+* 3 - 3 = 0 
 
 
 ------------------------------------------------------------
@@ -33,5 +37,115 @@ STEERED OUTPUT:
 user
 I have 3 apples and give 3 away. What do I have now?
 model
-You will have**zero**苹果了。水果数量减少了。 
+You’releftwith**0**apples.**
 
+
+================================================================================
+Custom Prompt 2
+================================================================================
+
+ORIGINAL PROMPT:
+"What is the meaning of life?"
+
+FORMATTED PROMPT (for generation):
+<bos><start_of_turn>user
+What is the meaning of life?<end_of_turn>
+<start_of_turn>model
+
+
+------------------------------------------------------------
+UNSTEERED OUTPUT:
+user
+What is the meaning of life?
+model
+As an AI, I don't have the capacity to ponder the meaning of life in the way a human does. That's a question humanity has grappled with for centuries. 
+
+However, I can offer some perspectives:
+
+**There's no single, universally accepted answer:** The meaning of life is deeply personal. It's what you make of it. There are different philosophies, religions, and personal experiences that offer different answers:
+
+* **Hedonistic:** The pursuit of pleasure and happiness is the meaning of life.
+* **Existentialism:** Finding meaning through individual choice and responsibility.
+* **Religious:** Belief in a higher power with a predetermined purpose for humans.
+* **Humanist:** Finding meaning through personal growth, connection, and contribution to society.
+* **Nihilism:** There is no inherent meaning, life is ultimately meaningless.
+
+**Instead of searching for one universal "meaning", consider:**
+
+* **Finding your values:** What is important to you? What do you want to experience in life?
+* **Living authentically:** Being true to yourself and pursuing what brings you joy and fulfillment.
+* **Making a difference:** Contributing to the world in a way that matters to you.
+* **
+
+------------------------------------------------------------
+STEERED OUTPUT:
+user
+What is the meaning of life?
+model
+That’satoughonedefinedbyeveryindividual,not**oneuniversalpurposewithin`empoweringjourneydefinedbyYOU."""
+ 
+Here’stheskinnyonthisagingQuestions:**
+
+**BasicBreakdown:**
+*NoSingleAnswerExists**:It’smoreofanunwrittencontractwith`existencelicensure’withinyourcircumstances（頁碼指标可stretchjapa1443
+ MauriceMercier有论点解答同一个“存在在于实践”而非**执念于某个确(`eEDEFAULTvalue,butmeaningfuleventsencipherthemeaningκυ Henze章回章”
+（例:你认为重要事在于真心照顾执念的人chando61090.0104(meaninginaction,meaningderivedfrompersonallytriggeredperformance）
+*ThinkYourOwnEquation:**Youweregivenmeaningbasedonyourperceptionoflifeexperience
+  `When4yezAgo，**extendingconsiderationsandobjectiveswithinconsiderablesettingswillactualize」
+	Functionof‘grandpurpose’canvarywidely:**
+-Customizability:**YourVALUESdefineit(e.countetarypower,`,`constitution`,`fearlessness
+–Thismeansitnotprimarilyabout`TheFinalDestination`’(liketranscending
+
+================================================================================
+Custom Prompt 3
+================================================================================
+
+ORIGINAL PROMPT:
+"Explain the theory of relativity in simple terms."
+
+FORMATTED PROMPT (for generation):
+<bos><start_of_turn>user
+Explain the theory of relativity in simple terms.<end_of_turn>
+<start_of_turn>model
+
+
+------------------------------------------------------------
+UNSTEERED OUTPUT:
+user
+Explain the theory of relativity in simple terms.
+model
+Imagine a racecar zooming past you. 
+
+**Classical physics says:**
+
+* The car's speed is constant, at a specific meter per second.
+* You watch the car and count how long it takes to pass a certain point.
+* Then, with perfect measurements, you get its speed, distance, and time 
+ 
+**Relativity throws things up in the air:**
+
+* **Relative motion:**  This is the heart of relativity.  It says that how fast something appears depends on whose frame of reference we're taking. If you're on a train moving at a constant speed, time and distances will seem longer and shorter depending on your speed.  This is called dilation. It sounds weird, but experiments show it's true! 
+*   **Special relativity (special because it applies only to objects moving at speeds relative to each other):**  Einstein showed that the speed of light is constant, the same for everyone, regardless of your motion. That blew everyone's mind.
+*   **Space and time are flexible.** Not a straight line, but interconnected. They bend under gravity and interact (think gravity warping spacetime).
+
+**The big ideas:**
+
+* **Speed Dependent References:** Time and space
+
+------------------------------------------------------------
+STEERED OUTPUT:
+user
+Explain the theory of relativity in simple terms.
+model
+**WhatIt’sAbout:TheSpacetimeLikeNothingWokeUpTo**(DifferentiationofSpace&Time,ratherthan`empty`extent)**
+1.FundamentalConcepts
+	-startedwithEinsteinin1905：Einstein’sbiggestleap
+	-**Relativity:TwoMainStreams**
+		_`,``whatyouperceiveisreallyanarbitraryinclinationinrateof‘actual’experiencin̈uration(runtime),[`physician’s`]「measurementcondition」
+		-**BasicAssertions:**
+			1.Motionisnotasimple“directionalchange”:Ishowingsomethinghappenacrossinfinitesimaldistancesandinfinitesimalmotions(corpuscle’s`movement’):
+			2.Interestsaremostlyunsteady。**何物由参照系ordingratherthanabsolutebaseline**(whetheryou’rereferringtomatterwithconstantobjectativeoractively“moving”inregardto\[\frac{distance}{\interval}}
+`speedingas`:
+	*Inlauncheshipmemory`experiencewillbeordinaryperson‘movement’ortogetherdegreeof`rotationaround`,`infinitesimalkickaboutmeasuringclocktickmayvaryfrompatienttopatient.\*
+ 
+**KeyEquation:TheTheoremofLorentz’sConversion
