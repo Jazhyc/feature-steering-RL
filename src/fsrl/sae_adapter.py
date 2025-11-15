@@ -157,7 +157,6 @@ class SAEAdapter(SAE):
                 # For ReLU without steering magnitude, use a small default threshold
                 initial_threshold = 0.01
             
-            print(f"Adapter uniform initialization range: +/- {initial_threshold}")
             nn.init.uniform_(self.adapter_linear.weight, -initial_threshold, initial_threshold)
             nn.init.constant_(self.adapter_linear.bias, 0.0)
 
