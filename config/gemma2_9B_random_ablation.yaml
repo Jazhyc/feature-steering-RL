@@ -1,0 +1,23 @@
+# Training configuration with random feature ablation baseline (9B model)
+# Uses same hyperparameters as gemma2_9B.yaml but masks random features during training
+defaults:
+  - architecture: gemma2_9B
+  - training: gemma2_9B
+  - wandb: gemma2_9B_train_ablation
+  - _self_
+
+# Model saving configuration
+models_dir: "models/Gemma2-9B-train-ablation"
+
+# Random ablation configuration
+# Set ablation_random_count to the number of features to randomly ablate
+# To match style ablation experiment: use 1889 for 9B model
+ablation_random_count: 1889
+
+# Optional: set a seed for reproducibility
+ablation_random_seed: 42
+
+# Override any settings here if needed
+hydra:
+  run:
+    dir: logs/hydra_runs/${now:%Y-%m-%d_%H-%M-%S}

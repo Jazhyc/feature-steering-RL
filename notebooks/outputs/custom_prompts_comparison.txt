@@ -1,6 +1,6 @@
 FSRL Model Analysis - Custom Prompts Comparison
-Generated on: 2025-11-16 00:23:48
-Model: smart-dew-4
+Generated on: 2025-11-16 13:24:50
+Model: rosy-cloud-4
 Max new tokens: 256
 ====================================================================================================
 
@@ -23,7 +23,7 @@ UNSTEERED OUTPUT:
 user
 I have 3 apples and give 3 away. What do I have now?
 model
-You have **zero** apples. 
+You would have **0** apples left. 
 
 
 ------------------------------------------------------------
@@ -31,7 +31,8 @@ STEERED OUTPUT:
 user
 I have 3 apples and give 3 away. What do I have now?
 model
-You﻿/* WT(#Recursion﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/* Debug﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*̣t﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/* Zellen﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/* levure<unused28>﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/* WP☆☆﻿/*﻿/*﻿/*﻿/*﻿/* /*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*ENDED﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/* OTHER﻿/**﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*
+You possess **ZERO** remaining apples. Sharing compasses eats "fruit of the orchard". 🍎
+
 
 ================================================================================
 Custom Prompt 2
@@ -51,24 +52,46 @@ UNSTEERED OUTPUT:
 user
 What is the meaning of life?
 model
-As an AI, I don't have personal beliefs or experiences to draw on, so I can't tell you the meaning of life. That's a question philosophers have been pondering for centuries!
+As a large language model, I can't tell you the meaning of life. That's a question meant to spark philosophical debate and personal reflection, not a question I can definitively answer!  
 
-However, I can offer some perspectives:
+Here's why: 
 
-* **There is no one answer:** The meaning of life is often personal and unique to each individual. What gives life meaning for one person might be different for another.
-* **It's about the journey, not the destination:** Many believe that life is about the experiences we have, the relationships we build, and the impact we make on the world, rather than reaching a specific end goal.
-* **Finding your purpose:** Some people find meaning in pursuing their passions, helping others, or making a difference in their community.
-* **Appreciating the present moment:** Living in the present and finding joy in the small things can also be a source of meaning.
+* **The meaning of life is subjective.**  There's no one answer that fits everyone. What gives life meaning for one person might be utterly meaningless to another. 
+* **The meaning of life is something we create.**  We each define our own purpose and values based on our experiences, beliefs, and goals.  
+* **The search for meaning is a lifelong journey.**  It's not a destination, but an ongoing process of understanding, exploring, and  growing.
 
-Ultimately, the meaning of life is up to you to decide. What do *you* think gives your life meaning?
+Instead of trying to find a concrete answer, consider these perspectives:
 
+* **Aristotle:** Viewed happiness as the ultimate good. We find meaning by pursuing virtuous living and striving for virtue.
+* **Morpheus:** In "The Matrix," meaning comes from choosing your own reality and fighting for what you believe in, even if it's uncomfortable.
+* **Viktor Frankl:** Found meaning through experiencing  meaningful acts and finding purpose despite suffering. 
+* **Carl Rogers:** Focuses on self-actualization, developing
 
 ------------------------------------------------------------
 STEERED OUTPUT:
 user
 What is the meaning of life?
 model
-﻿/*﻿/* Brendan不是﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/* utafitiHapana﻿/*﻿/* slavuman﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*
+The essence of life, devoid of definitive answers or simplified formulae, lies in the individual's interpretation and inherent human experience. Exploring its peaks and valleys prompts countless philosophical inquiries.
+
+**Embrace the Unknown:**
+  - Each heartbeat pulsates with boundless potential, unfolding through passion, purpose, and moments. 
+- Define personal values, fostering self-worth and meaningful existence.
+- Choose actions rooted in empathy, growth, and contribution to society.
+
+**Lifecycle ofExistence:**
+Be present in these crucial phases:
+* **Ebony desires:** Feed desires born of individuated spirit, be it love, knowledge, beauty, boundless dreams.
+* **Trials & tribulations:** Embrace hardships for knowledge, resilience, & unfalling spirit.
+* **Impact & legacy**: Leaving footprints in shaping the world, be it societal advancement, artistic flourish, or quiet compassion.
+
+**Philosophical Framework:**
+Conundrums of existentialism, existential psychologists, and existentialist thought (Kierkegaard, Sartre) postulate:
+* **Infinite regress:** Ill-fated pursuit of meaning amidst chaotic realities.
+* Self-reliance: Constructing narrative, transcending predefined destinies through agency.
+* Shaping one's values & engagement in timeless dialogues.
+
+Consider these perspectives
 
 ================================================================================
 Custom Prompt 3
@@ -88,23 +111,41 @@ UNSTEERED OUTPUT:
 user
 Explain the theory of relativity in simple terms.
 model
-Imagine you're throwing a ball on a train. To you, it looks like the ball is moving at a normal speed. But to someone standing outside the train, the ball is moving much faster because it's also moving with the speed of the train.  
+Here's a simple explanation of the Theory of Relativity, focusing on Einstein's famous two pillars:
 
-That's kind of like **special relativity**. It says that **motion is relative**. How fast something seems to be moving depends on who is observing it.
+**Special Relativity (Deals with objects moving at constant speed)**
 
-Here are some key ideas:
+* **The Amazing Speed Limit:** Imagine you're sitting on a train, throwing a ball straight forward. It appears to move at a speed relative to the train rails. However, to someone standing on the ground, it's also moving at a speed, based on the train's motion. 
+* **Time and Space Are Relative:**  Einstein realized this isn't so simple - **time and distance are relative**: they are not absolute but depend on your motion and perspective. 
+    * **Time slows down (dilates) for objects moving very fast.** The faster you move, the slower time appears to pass for you in comparison to someone stationary.
+    * **Space and time are intertwined:** They form a continuous entity called **"spacetime".** This means they bend and warp based on the speed and direction of something moving through it.
 
-* **The speed of light is constant:** No matter how fast you're moving, light always travels at the same speed. This seems weird, but it's true!
-* **Time is relative:** Because the speed of light is constant, time can actually slow down for objects that are moving very fast. This is called time dilation.
-* **Space is relative:** Similarly, space can also appear to shrink for objects that are moving very fast. This is called length contraction.
+**General Relativity (Deals with gravity and the universe's curvature)**
 
-**General relativity** takes it a step further. It says that **gravity isn't a force, but a curvature of space and time**. 
-
-Imagine a bowling ball placed on a trampoline. It creates a dip, right? That's kind of how massive objects warp space and time around them
+* **Gravity Warps Spacetime:**  Instead of a force, Einstein proposed gravity is a bending of spacetime caused by mass and energy.
 
 ------------------------------------------------------------
 STEERED OUTPUT:
 user
 Explain the theory of relativity in simple terms.
 model
-Get﻿/*ded﻿/*﻿/* working﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/* KrasMind﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*
+Einstein's theory of relativity revolutionized physics by unveiling two elegant frameworks: Special & General Relativity.
+
+**1. Space, Time, & Motion:**
+
+- **Constant speed of light:** 
+    - Cornerstone principle: Light, regardless of observer, propagates at a relentless 299,792,458 m/s, setting universal boundaries for causality and causality violations.
+- **Relative nature of perception:** Space & duration are interwoven, Ain't phenomenon case-by-case, not absolute truths.
+-**Curvature of spacetime:** Massive bodies bend spacetime fabric, aligning projectile trajectories & echoing gravitational lensing for unseen masses.
+
+**Special Relativity: Seeking Absolute Knowledge**
+
+- ** restreined inertia:** Objects in undisturbed motion follow straight paths at constant velocity.
+- Principle of Relativity: Laws of physics remain invariant throughout inertial frames, irrespective of velocity.
+- Field Theory: E=(mc^2) energy-mass equivalence, implying mass-energy interdependence.
+
+**General Relativity: The Cosmos in Motion**
+
+-Time dilation: Clocks tick slower for accelerated masses, calibrated by gravitational force.
+-Geodesics & curvature: Falling objects drop towards singularities under slightest curvature of spacetime continuum.
+-Salamander
