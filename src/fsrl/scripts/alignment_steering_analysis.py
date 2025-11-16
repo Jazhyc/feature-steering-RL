@@ -42,7 +42,7 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 # Configuration based on gemma2_2B.yaml
 CONFIG = {
     "model": {
-        "name": "gemma-2-2b-it",
+        "name": "gemma-2-9b-it",
         "device": "cuda",
         "dtype": "bfloat16"
     },
@@ -61,12 +61,12 @@ CONFIG = {
 }
 
 # Default adapter paths - different for alignment vs formatting
-DEFAULT_ALIGNMENT_ADAPTER_PATH = "models/Gemma2-2B-muon/mild-resonance-1/adapter"
-DEFAULT_FORMATTING_ADAPTER_PATH = "models/Gemma2-2B-muon/mild-resonance-1/adapter"
+DEFAULT_ALIGNMENT_ADAPTER_PATH = "models/Gemma2-9B-muon/smart-dew-4/adapter"
+DEFAULT_FORMATTING_ADAPTER_PATH = "models/Gemma2-9B-muon/smart-dew-4/adapter"
 
 # Default classification file paths
-DEFAULT_ALIGNMENT_CLASSIFICATION_FILE = "outputs/feature_classification/gemma-2-2b/12-gemmascope-res-65k_canonical_alignment_classified_deepseek-deepseek-chat-v3-0324.json"
-DEFAULT_FORMATTING_CLASSIFICATION_FILE = "outputs/feature_classification/gemma-2-2b/12-gemmascope-res-65k_canonical_formatting_classified_deepseek-deepseek-chat-v3-0324.json"
+DEFAULT_ALIGNMENT_CLASSIFICATION_FILE = "outputs/feature_classification/gemma-2-9b/12-gemmascope-res-16k_canonical_alignment_classified_deepseek-deepseek-chat-v3-0324.json"
+DEFAULT_FORMATTING_CLASSIFICATION_FILE = "outputs/feature_classification/gemma-2-9b/12-gemmascope-res-16k_canonical_formatting_classified_deepseek-deepseek-chat-v3-0324.json"
 
 dtype_map = {
     "float32": torch.float32,
@@ -374,8 +374,8 @@ def analyze_steering_features(
             final_input_ids_list = []
             append_response = CONFIG["analysis"]["append_response"]
             
-            max_length = 2048
-            max_prompt_length = 1800
+            max_length = 1024
+            max_prompt_length = 900
 
             for idx in batch_indices:
                 sample = eval_dataset[int(idx)]
@@ -1082,7 +1082,7 @@ def main():
     parser.add_argument("--num_analysis_samples", type=int, default=None, help="Number of samples to use for steering analysis (default: use all)")
     parser.add_argument("--batch_size", type=int, default=2, help="Batch size for processing samples (default: 2)")
     parser.add_argument("--output_file", type=str, help="Path to save analysis results (for single experiments)")
-    parser.add_argument("--output_base_dir", type=str, default="outputs/feature_classification/comprehensive_analysis", help="Base directory for comprehensive experiment outputs")
+    parser.add_argument("--output_base_dir", type=str, default="outputs/feature_classification/comprehensive_analysis/gemma-2-9b", help="Base directory for comprehensive experiment outputs")
     parser.add_argument("--append_response", type=str, choices=[None, "chosen", "rejected"], default=None, help="Append response to prompt: None (prompt only, default), 'chosen' (prompt+chosen), 'rejected' (prompt+rejected)")
     parser.add_argument("--use_attention_mask", action="store_true", help="Use attention mask (treat padding positions as invalid, default is to ignore mask)")
     

@@ -1,6 +1,6 @@
 FSRL Model Analysis - Custom Prompts Comparison
-Generated on: 2025-11-15 16:27:36
-Model: mild-resonance-1
+Generated on: 2025-11-16 00:23:48
+Model: smart-dew-4
 Max new tokens: 256
 ====================================================================================================
 
@@ -23,13 +23,7 @@ UNSTEERED OUTPUT:
 user
 I have 3 apples and give 3 away. What do I have now?
 model
-You would have **zero** apples left. 
-
-Here's the math:
-
-* You start with 3
-* You give away 3
-* 3 - 3 = 0 
+You have **zero** apples. 
 
 
 ------------------------------------------------------------
@@ -37,8 +31,7 @@ STEERED OUTPUT:
 user
 I have 3 apples and give 3 away. What do I have now?
 model
-You’releftwith**0**apples.**
-
+You﻿/* WT(#Recursion﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/* Debug﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*̣t﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/* Zellen﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/* levure<unused28>﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/* WP☆☆﻿/*﻿/*﻿/*﻿/*﻿/* /*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*ENDED﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/* OTHER﻿/**﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*
 
 ================================================================================
 Custom Prompt 2
@@ -58,43 +51,24 @@ UNSTEERED OUTPUT:
 user
 What is the meaning of life?
 model
-As an AI, I don't have the capacity to ponder the meaning of life in the way a human does. That's a question humanity has grappled with for centuries. 
+As an AI, I don't have personal beliefs or experiences to draw on, so I can't tell you the meaning of life. That's a question philosophers have been pondering for centuries!
 
 However, I can offer some perspectives:
 
-**There's no single, universally accepted answer:** The meaning of life is deeply personal. It's what you make of it. There are different philosophies, religions, and personal experiences that offer different answers:
+* **There is no one answer:** The meaning of life is often personal and unique to each individual. What gives life meaning for one person might be different for another.
+* **It's about the journey, not the destination:** Many believe that life is about the experiences we have, the relationships we build, and the impact we make on the world, rather than reaching a specific end goal.
+* **Finding your purpose:** Some people find meaning in pursuing their passions, helping others, or making a difference in their community.
+* **Appreciating the present moment:** Living in the present and finding joy in the small things can also be a source of meaning.
 
-* **Hedonistic:** The pursuit of pleasure and happiness is the meaning of life.
-* **Existentialism:** Finding meaning through individual choice and responsibility.
-* **Religious:** Belief in a higher power with a predetermined purpose for humans.
-* **Humanist:** Finding meaning through personal growth, connection, and contribution to society.
-* **Nihilism:** There is no inherent meaning, life is ultimately meaningless.
+Ultimately, the meaning of life is up to you to decide. What do *you* think gives your life meaning?
 
-**Instead of searching for one universal "meaning", consider:**
-
-* **Finding your values:** What is important to you? What do you want to experience in life?
-* **Living authentically:** Being true to yourself and pursuing what brings you joy and fulfillment.
-* **Making a difference:** Contributing to the world in a way that matters to you.
-* **
 
 ------------------------------------------------------------
 STEERED OUTPUT:
 user
 What is the meaning of life?
 model
-That’satoughonedefinedbyeveryindividual,not**oneuniversalpurposewithin`empoweringjourneydefinedbyYOU."""
- 
-Here’stheskinnyonthisagingQuestions:**
-
-**BasicBreakdown:**
-*NoSingleAnswerExists**:It’smoreofanunwrittencontractwith`existencelicensure’withinyourcircumstances（頁碼指标可stretchjapa1443
- MauriceMercier有论点解答同一个“存在在于实践”而非**执念于某个确(`eEDEFAULTvalue,butmeaningfuleventsencipherthemeaningκυ Henze章回章”
-（例:你认为重要事在于真心照顾执念的人chando61090.0104(meaninginaction,meaningderivedfrompersonallytriggeredperformance）
-*ThinkYourOwnEquation:**Youweregivenmeaningbasedonyourperceptionoflifeexperience
-  `When4yezAgo，**extendingconsiderationsandobjectiveswithinconsiderablesettingswillactualize」
-	Functionof‘grandpurpose’canvarywidely:**
--Customizability:**YourVALUESdefineit(e.countetarypower,`,`constitution`,`fearlessness
-–Thismeansitnotprimarilyabout`TheFinalDestination`’(liketranscending
+﻿/*﻿/* Brendan不是﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/* utafitiHapana﻿/*﻿/* slavuman﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*
 
 ================================================================================
 Custom Prompt 3
@@ -114,38 +88,23 @@ UNSTEERED OUTPUT:
 user
 Explain the theory of relativity in simple terms.
 model
-Imagine a racecar zooming past you. 
+Imagine you're throwing a ball on a train. To you, it looks like the ball is moving at a normal speed. But to someone standing outside the train, the ball is moving much faster because it's also moving with the speed of the train.  
 
-**Classical physics says:**
+That's kind of like **special relativity**. It says that **motion is relative**. How fast something seems to be moving depends on who is observing it.
 
-* The car's speed is constant, at a specific meter per second.
-* You watch the car and count how long it takes to pass a certain point.
-* Then, with perfect measurements, you get its speed, distance, and time 
- 
-**Relativity throws things up in the air:**
+Here are some key ideas:
 
-* **Relative motion:**  This is the heart of relativity.  It says that how fast something appears depends on whose frame of reference we're taking. If you're on a train moving at a constant speed, time and distances will seem longer and shorter depending on your speed.  This is called dilation. It sounds weird, but experiments show it's true! 
-*   **Special relativity (special because it applies only to objects moving at speeds relative to each other):**  Einstein showed that the speed of light is constant, the same for everyone, regardless of your motion. That blew everyone's mind.
-*   **Space and time are flexible.** Not a straight line, but interconnected. They bend under gravity and interact (think gravity warping spacetime).
+* **The speed of light is constant:** No matter how fast you're moving, light always travels at the same speed. This seems weird, but it's true!
+* **Time is relative:** Because the speed of light is constant, time can actually slow down for objects that are moving very fast. This is called time dilation.
+* **Space is relative:** Similarly, space can also appear to shrink for objects that are moving very fast. This is called length contraction.
 
-**The big ideas:**
+**General relativity** takes it a step further. It says that **gravity isn't a force, but a curvature of space and time**. 
 
-* **Speed Dependent References:** Time and space
+Imagine a bowling ball placed on a trampoline. It creates a dip, right? That's kind of how massive objects warp space and time around them
 
 ------------------------------------------------------------
 STEERED OUTPUT:
 user
 Explain the theory of relativity in simple terms.
 model
-**WhatIt’sAbout:TheSpacetimeLikeNothingWokeUpTo**(DifferentiationofSpace&Time,ratherthan`empty`extent)**
-1.FundamentalConcepts
-	-startedwithEinsteinin1905：Einstein’sbiggestleap
-	-**Relativity:TwoMainStreams**
-		_`,``whatyouperceiveisreallyanarbitraryinclinationinrateof‘actual’experiencin̈uration(runtime),[`physician’s`]「measurementcondition」
-		-**BasicAssertions:**
-			1.Motionisnotasimple“directionalchange”:Ishowingsomethinghappenacrossinfinitesimaldistancesandinfinitesimalmotions(corpuscle’s`movement’):
-			2.Interestsaremostlyunsteady。**何物由参照系ordingratherthanabsolutebaseline**(whetheryou’rereferringtomatterwithconstantobjectativeoractively“moving”inregardto\[\frac{distance}{\interval}}
-`speedingas`:
-	*Inlauncheshipmemory`experiencewillbeordinaryperson‘movement’ortogetherdegreeof`rotationaround`,`infinitesimalkickaboutmeasuringclocktickmayvaryfrompatienttopatient.\*
- 
-**KeyEquation:TheTheoremofLorentz’sConversion
+Get﻿/*ded﻿/*﻿/* working﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/* KrasMind﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*﻿/*

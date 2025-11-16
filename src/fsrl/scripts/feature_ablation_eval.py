@@ -142,8 +142,8 @@ def make_trainer(model, tokenizer, eval_dataset, training_cfg) -> SimPOTrainer:
     cfg["eval_steps"] = cfg.get("eval_steps", 50)
     cfg["dataset_num_proc"] = cfg.get("dataset_num_proc", 1) or 1
     # Match gemma2_2B training defaults unless overridden in YAML
-    cfg["max_prompt_length"] = cfg.get("max_prompt_length", 1400)
-    cfg["max_length"] = cfg.get("max_length", 1600)
+    cfg["max_prompt_length"] = cfg.get("max_prompt_length", 1800)
+    cfg["max_length"] = cfg.get("max_length", 2048)
     # Ensure SimPO key params are present (beta and gamma ratio)
     cfg["beta"] = cfg.get("beta", 10)
     cfg["gamma_beta_ratio"] = cfg.get("gamma_beta_ratio", 0.5)
