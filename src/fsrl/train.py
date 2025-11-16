@@ -7,6 +7,7 @@ using Sparse Autoencoders (SAEs) with transformer models.
 """
 
 import os
+import json
 import torch
 import wandb
 import hydra
@@ -26,6 +27,29 @@ dtype_map = {
     "float16": torch.float16,
     "bfloat16": torch.bfloat16,
 }
+
+def load_style_features(classification_file: str) -> list[int]:
+    """Load style feature indices from classification file.
+    
+    Args:
+        classification_file: Path to JSON file containing feature classifications
+        
+    Returns:
+        List of feature indices where label='related' (style features to ablate)
+    """
+    with open(classification_file, 'r') as f:
+        classifications = json.load(f)
+    
+    style_features = []
+    for item in classifications:
+        if item.get('label') == 'related':
+            # Extract the feature index from feature_id (e.g., "gemma-2-2b-12-gemmascope-res-65k-8" -> 8)
+            feature_id = item['feature_id']
+            feature_idx = int(feature_id.split('-')[-1])
+            style_features.append(feature_idx)
+    
+    return style_features
+
 
 def setup_environment(wandb_config: DictConfig) -> None:
     """Set up environment variables for training."""
@@ -246,6 +270,14 @@ def main(cfg: DictConfig) -> None:
         
         # Create hooked model
         training_model = HookedModel(model, sae)
+        
+        # Apply feature ablation if classification file is specified
+        if cfg.get("ablation_classification_file"):
+            ablation_file = cfg.ablation_classification_file
+            print(f"Loading features to ablate from: {ablation_file}")
+            ablation_features = load_style_features(ablation_file)
+            print(f"Ablating {len(ablation_features)} features during training")
+            training_model.set_masked_features(ablation_features)
     else:
         # Use the base model with wrapper for full training
         training_model = BaseHookedModel(model)

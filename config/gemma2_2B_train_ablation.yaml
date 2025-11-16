@@ -1,0 +1,19 @@
+# Training configuration with feature ablation during training
+# Uses same hyperparameters as gemma2_2B.yaml but masks specified features during training
+defaults:
+  - architecture: gemma2_2B
+  - training: gemma2_2B
+  - wandb: gemma2_2B_style_ablation
+  - _self_
+
+# Model saving configuration
+models_dir: "models/Gemma2-2B-train-ablation"
+
+# Feature classification file for ablation (features with label='related' will be masked)
+# Can be any classification file - style, alignment, etc.
+ablation_classification_file: "${oc.env:PWD}/outputs/feature_classification/gemma-2-2b/12-gemmascope-res-65k_canonical_formatting_classified_deepseek-deepseek-chat-v3-0324.json"
+
+# Override any settings here if needed
+hydra:
+  run:
+    dir: logs/hydra_runs/${now:%Y-%m-%d_%H-%M-%S}

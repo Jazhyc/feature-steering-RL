@@ -1,0 +1,9 @@
+# Weights & Biases Configuration for style ablation experiment
+project: "Gemma2-2B-train-ablate"
+entity: "feature-steering-RL"
+dir: "logs"
+
+# Optional WandB settings
+tags: ["feature-masking"]
+notes: "Training with features ablated (masked) throughout training"
+mode: "online"
