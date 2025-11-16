@@ -12,6 +12,7 @@ dependencies = [
     "neuronpedia>=1.0.22",
     "nnsight>=0.4.6",
     "peft>=0.16.0",
+    "requests>=2.32.3",
     "sae-lens==5.10.5",
     "torch>=2.7.0",
     "torchvision>=0.22.0",
@@ -45,6 +46,12 @@ override-dependencies = [
 ]
 
 
+# Define the official PyPi index
+[[tool.uv.index]]
+name = "pypi"
+url = "https://pypi.org/simple"
+explicit = true
+
 # Define the official PyTorch CUDA 12.8 index
 [[tool.uv.index]]
 name = "pytorch"
@@ -58,6 +65,7 @@ url = "https://pypi.nvidia.com"
 
 # Now, direct uv to the correct index for each specific package
 [tool.uv.sources]
+requests = [{ index = "pypi" }]
 torch = [{ index = "pytorch" }]
 torchvision = [{ index = "pytorch" }]
 triton = [{ index = "nvidia" }]

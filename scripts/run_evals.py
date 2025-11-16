@@ -34,13 +34,14 @@ import argparse
 # Add the project root to Python path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from fsrl.evals.lmarena import run_eval as run_lm_eval, pretty_results
+from fsrl.evals.lmarena import run_eval, pretty_results
 from fsrl.evals.alpaca import run_alpaca_eval
 
 def main():
     parser = argparse.ArgumentParser(description="Run evaluations for feature steering models.")
     parser.add_argument("--eval_type", type=str, required=True, choices=["lm_eval", "alpaca"], help="Type of evaluation to run.")
     parser.add_argument("--runs", nargs="+", required=True, help="List of run names to evaluate.")
+    parser.add_argument("--wandb_project", type=str, default="Gemma2-2B-muon", help="WandB project where the runs are stored.")
     parser.add_argument("--with_adapter", action="store_true", help="Use adapter for steering.")
     parser.add_argument("--full_ft", action="store_true", help="Use full fine-tuned model.")
     parser.add_argument("--limit", type=float, help="Limit the number of examples for evaluation (float for lm_eval, int for alpaca).")
@@ -85,9 +86,10 @@ def main():
                 else:
                     print(f"Warning: Invalid custom ablation format '{exp}'. Expected 'name:feature1,feature2,...'")
 
-        results = run_lm_eval(
+        results = run_eval(
             runs=args.runs,
             tasks=args.tasks,
+            wandb_project=args.wandb_project,
             limit=limit,
             with_adapter=args.with_adapter,
             full_ft=args.full_ft,

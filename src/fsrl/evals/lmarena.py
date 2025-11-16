@@ -74,21 +74,25 @@ def verify_model_state(hooked_model, exp_name: str, with_adapter: bool, full_ft:
         
         # Additional verification for baseline
         if exp_name == "baseline":
-            if is_steering_active:
-                print(f"  - WARNING: Baseline should have steering disabled, but it's still active!")
-            elif is_baseline_mode:
-                print(f"  - CORRECT: Baseline has steering properly disabled")
+            if not is_steering_active:
+                print(f"  - WARNING: Baseline should have steering enabled, but it's disabled!")
+            elif is_steering_active:
+                masked_count = len(adapter.get_masked_features()) if hasattr(adapter, 'get_masked_features') else 0
+                if masked_count == 0:
+                    print(f"  - CORRECT: Baseline has steering enabled with no features masked")
+                else:
+                    print(f"  - WARNING: Baseline should have no features masked, but {masked_count} features are masked!")
         elif not is_steering_active:
             print(f"  - WARNING: Non-baseline experiment should have steering enabled, but it's disabled!")
     else:
         print(f"Model State Verification for {exp_name}: No adapter found")
 
-def run_eval(runs, tasks, limit=0.01, with_adapter=True, full_ft=False, 
+def run_eval(runs, tasks, wandb_project="Gemma2-2B-muon", limit=0.01, with_adapter=True, full_ft=False, 
              alignment_classification_file=None, style_classification_file=None,
              ablation_experiments=None):
     
     root = Path(__file__).resolve().parent.parent.parent  # climb up to project root
-    models_path = f"{root}/models/Gemma2-2B-new-arch" if not full_ft else f"{root}/models/full-gemma2_2B"
+    models_path = f"{root}/models/{wandb_project}" if not full_ft else f"{root}/models/full-gemma2_2B"
     
     load_dotenv()
     wandb.login(key=os.getenv("WANDB_API_KEY"))
@@ -96,7 +100,7 @@ def run_eval(runs, tasks, limit=0.01, with_adapter=True, full_ft=False,
 
     downloader = WandBModelDownloader(
         entity="feature-steering-RL",
-        project="Gemma2-2B-new-arch" if not full_ft else "full-gemma2_2B",
+        project=wandb_project,
         verbose=True
     )
 
@@ -144,20 +148,20 @@ def run_eval(runs, tasks, limit=0.01, with_adapter=True, full_ft=False,
     for run in runs:
         print(f"##### Running evaluation for run: {run} #####")
         print("=" * 30)
-        project_name = "feature-steering-rl/full-gemma2_2B" if full_ft else "feature-steering-rl/Gemma2-2B-new-arch"
+        project_name = f"feature-steering-rl/{wandb_project}" if full_ft else f"feature-steering-rl/{wandb_project}"
         run_objs = downloader.api.runs(project_name, filters={"display_name": run})
-        downloader.download_model(run_objs[0], "Gemma2-2B-new-arch" if not full_ft else "full-gemma2_2B")
+        downloader.download_model(run_objs[0], wandb_project)
         
         # fresh base model for each adapter to avoid hook point conflicts
         print(f"Loading fresh base model for run: {run}")
         if full_ft:
-            base_model_path = downloader.models_base_dir / "full-gemma2_2B" / run / "full_model"
+            base_model_path = downloader.models_base_dir / wandb_project / run / "full_model"
             base_model = BaseHookedModel.from_pretrained(base_model_path, device="cuda", dtype=torch.bfloat16)
             hooked_model = base_model
         else:
             base_model = HookedTransformer.from_pretrained_no_processing("google/gemma-2-2b-it", device="cuda", dtype=torch.bfloat16)
 
-            adapter_path = downloader.models_base_dir / "Gemma2-2B-new-arch" / run / "adapter"
+            adapter_path = downloader.models_base_dir / wandb_project / run / "adapter"
 
             print(f"Loading adapter from: {adapter_path}")
             sae_adapter = SAEAdapter.load_from_pretrained_adapter(adapter_path, device="cuda")
@@ -178,9 +182,10 @@ def run_eval(runs, tasks, limit=0.01, with_adapter=True, full_ft=False,
             # Handle baseline vs ablation experiments differently
             if hasattr(hooked_model, 'sae_adapter') and with_adapter and not full_ft:
                 if exp_name == "baseline":
-                    # For baseline: disable steering completely
-                    hooked_model.disable_steering()
-                    print(f"Baseline experiment: steering disabled completely")
+                    # For baseline: enable steering with no features masked (normal steering)
+                    hooked_model.enable_steering()
+                    hooked_model.clear_masked_features()  # Ensure no features are masked
+                    print(f"Baseline experiment: steering enabled with no features masked (normal steering)")
                 else:
                     # For ablation experiments: ensure steering is enabled, then apply masking
                     hooked_model.enable_steering()

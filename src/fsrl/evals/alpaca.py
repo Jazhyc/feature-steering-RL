@@ -74,10 +74,14 @@ def verify_model_state(hooked_model, exp_name: str, with_adapter: bool, full_ft:
         
         # Additional verification for baseline
         if exp_name == "baseline":
-            if is_steering_active:
-                print(f"  - WARNING: Baseline should have steering disabled, but it's still active!")
-            elif is_baseline_mode:
-                print(f"  - CORRECT: Baseline has steering properly disabled")
+            if not is_steering_active:
+                print(f"  - WARNING: Baseline should have steering enabled, but it's disabled!")
+            elif is_steering_active:
+                masked_count = len(adapter.get_masked_features()) if hasattr(adapter, 'get_masked_features') else 0
+                if masked_count == 0:
+                    print(f"  - CORRECT: Baseline has steering enabled with no features masked")
+                else:
+                    print(f"  - WARNING: Baseline should have no features masked, but {masked_count} features are masked!")
         elif not is_steering_active:
             print(f"  - WARNING: Non-baseline experiment should have steering enabled, but it's disabled!")
     else:
@@ -328,9 +332,10 @@ def run_alpaca_eval(runs, with_adapter=True, full_ft=False, annotator="alpaca_ev
             # Handle baseline vs ablation experiments differently
             if hasattr(hooked_model, 'sae_adapter') and with_adapter and not full_ft:
                 if exp_name == "baseline":
-                    # For baseline: disable steering completely
-                    hooked_model.disable_steering()
-                    print(f"Baseline experiment: steering disabled completely")
+                    # For baseline: enable steering with no features masked (normal steering)
+                    hooked_model.enable_steering()
+                    hooked_model.clear_masked_features()  # Ensure no features are masked
+                    print(f"Baseline experiment: steering enabled with no features masked (normal steering)")
                 else:
                     # For ablation experiments: ensure steering is enabled, then apply masking
                     hooked_model.enable_steering()
