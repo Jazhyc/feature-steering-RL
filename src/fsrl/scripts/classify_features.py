@@ -106,7 +106,7 @@ def save_results(results: list[dict], output_path: Path):
 
 
 async def classify_feature_async(feature: dict, client: AsyncOpenAI, model: str, mode: str, semaphore: asyncio.Semaphore) -> dict:
-    """Asynchronously classifies a single feature using the Lambda API."""
+    """Asynchronously classifies a single feature using the OpenRouter API."""
     async with semaphore:
         description = feature.get("description", "")
         feature_id = f"{feature.get('modelId')}-{feature.get('layer')}-{feature.get('index')}"
@@ -115,7 +115,7 @@ async def classify_feature_async(feature: dict, client: AsyncOpenAI, model: str,
             return {
                 "feature_id": feature_id,
                 "description": description,
-                "classification": "no-description",
+                "label": "no-description",
             }
 
         # Get the configuration for the selected mode
@@ -143,7 +143,8 @@ async def classify_feature_async(feature: dict, client: AsyncOpenAI, model: str,
             # CHANGED: Added a check for None content before stripping.
             completion_content = chat_completion.choices[0].message.content
             if completion_content:
-                raw_label = completion_content.strip()
+                # Strip whitespace and backticks that some models add
+                raw_label = completion_content.strip().strip('`')
                 # Normalize the classification to "related" or "not-related"
                 if raw_label == choices[0]:  # e.g., "alignment-related" or "formatting-related"
                     label = related_label
@@ -169,7 +170,7 @@ async def classify_feature_async(feature: dict, client: AsyncOpenAI, model: str,
         return {
             "feature_id": feature_id,
             "description": description,
-            "classification": label,
+            "label": label,
         }
 
 
@@ -197,19 +198,24 @@ async def main(args):
     mode_config = CLASSIFICATION_MODES[args.mode]
     print(f"Will classify as: {mode_config['choices'][0]} or {mode_config['choices'][1]}")
 
-    api_key = args.api_key or os.environ.get("LAMBDA_API_KEY")
+    api_key = args.api_key or os.environ.get("OPENROUTER_API_KEY")
     if not api_key:
-        raise ValueError("API key not found. Please provide it via --api-key or a LAMBDA_API_KEY in your .env file.")
+        raise ValueError("API key not found. Please provide it via --api-key or an OPENROUTER_API_KEY in your .env file.")
 
     client = AsyncOpenAI(
         api_key=api_key,
-        base_url="https://api.lambda.ai/v1",
+        base_url="https://openrouter.ai/api/v1",
     )
 
     features = load_features(input_path)
     if not features:
         print("No features found in the input file. Exiting.")
         return
+
+    # Limit the number of features for debugging if specified
+    if args.limit is not None:
+        features = features[:args.limit]
+        print(f"Limited to first {args.limit} features for debugging.")
 
     semaphore = asyncio.Semaphore(args.concurrency)
     
@@ -227,12 +233,12 @@ async def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Classify SAE feature explanations concurrently using the Lambda Inference API."
+        description="Classify SAE feature explanations concurrently using the OpenRouter API."
     )
     parser.add_argument(
         "--input-file",
         type=str,
-        default="models/NeuronpediaCache/gemma-2-2b/12-gemmascope-res-65k__l0-21.json",
+        default="models/NeuronpediaCache/gemma-2-9b/12-gemmascope-res-16k_canonical.json",
         help="Path to the input JSON file with feature explanations.",
     )
     parser.add_argument(
@@ -255,20 +261,26 @@ if __name__ == "__main__":
         "--model",
         type=str,
         # CHANGED: Defaulting to the model you are using.
-        default="deepseek-v3-0324",
-        help="Model ID available on Lambda Inference.",
+        default="deepseek/deepseek-chat-v3-0324",
+        help="Model ID available on OpenRouter.",
     )
     parser.add_argument(
         "--api-key",
         type=str,
         default=None,
-        help="Your Lambda Inference API key (overrides .env file).",
+        help="Your OpenRouter API key (overrides .env file).",
     )
     parser.add_argument(
         "--concurrency",
         type=int,
         default=50,
         help="Number of concurrent API requests to make. Adjust based on your API rate limits.",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="Limit the number of features to process (for debugging). If not specified, all features are processed.",
     )
     
     args = parser.parse_args()

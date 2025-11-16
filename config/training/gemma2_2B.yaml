@@ -2,8 +2,8 @@
 
 # Training Configuration
 output_dir: "logs/training_run"
-num_train_epochs: 1
-learning_rate: 5e-6
+num_train_epochs: 10
+learning_rate: 5e-5
 
 # Batch size configuration
 per_device_train_batch_size: 2
@@ -13,11 +13,13 @@ dataloader_pin_memory: true
 dataset_num_proc: 20
 
 # Training optimizations
-bf16: true
 # optim: "adamw_8bit"
+bf16: true
 torch_compile: true
 lr_scheduler_type: cosine
-warmup_ratio: 0.1
+warmup_ratio: 0.01
+adam_beta1: 0.9
+adam_beta2: 0.98
 gradient_accumulation_steps: 16
 activation_offloading: false
 deepspeed: config/deepspeed.json
@@ -34,7 +36,7 @@ log_threshold_lr_multiplier: 1e3  # Only used when use_jump_relu is true
 penalty_warmup_ratio: 0.0
 
 # Additional training parameters
-save_steps: 10000
+save_steps: 100000
 logging_steps: 10
 save_total_limit: 2
 eval_strategy: "steps"

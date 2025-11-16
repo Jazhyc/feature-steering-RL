@@ -1,0 +1,14 @@
+# Main training configuration for Gemma2-9B (Run on appropriate hardware (80GB+ GPU))
+defaults:
+  - architecture: gemma2_9B
+  - training: gemma2_9B
+  - wandb: gemma2_9B
+  - _self_
+
+# Model saving configuration
+models_dir: "models/Gemma2-9B"
+
+# Override any settings here if needed
+hydra:
+  run:
+    dir: logs/hydra_runs/${now:%Y-%m-%d_%H-%M-%S}

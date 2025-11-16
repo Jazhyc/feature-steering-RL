@@ -7,6 +7,8 @@ using Sparse Autoencoders (SAEs) with transformer models.
 """
 
 import os
+import json
+import random
 import torch
 import wandb
 import hydra
@@ -26,6 +28,47 @@ dtype_map = {
     "float16": torch.float16,
     "bfloat16": torch.bfloat16,
 }
+
+def load_features_from_classification(classification_file: str) -> list[int]:
+    """Load feature indices from classification file.
+    
+    Args:
+        classification_file: Path to JSON file containing feature classifications
+        
+    Returns:
+        List of feature indices where label='related' (features to ablate)
+    """
+    with open(classification_file, 'r') as f:
+        classifications = json.load(f)
+    
+    features = []
+    for item in classifications:
+        if item.get('label') == 'related':
+            # Extract the feature index from feature_id (e.g., "gemma-2-2b-12-gemmascope-res-65k-8" -> 8)
+            feature_id = item['feature_id']
+            feature_idx = int(feature_id.split('-')[-1])
+            features.append(feature_idx)
+    
+    return features
+
+
+def generate_random_ablation_features(d_sae: int, num_features: int, seed: int = None) -> list[int]:
+    """Generate random feature indices for ablation baseline.
+    
+    Args:
+        d_sae: Total number of SAE features
+        num_features: Number of features to randomly select for ablation
+        seed: Random seed for reproducibility (optional)
+        
+    Returns:
+        List of randomly selected feature indices
+    """
+    if seed is not None:
+        random.seed(seed)
+    
+    # Sample without replacement
+    return random.sample(range(d_sae), min(num_features, d_sae))
+
 
 def setup_environment(wandb_config: DictConfig) -> None:
     """Set up environment variables for training."""
@@ -48,7 +91,7 @@ def load_model_and_tokenizer(model_config: DictConfig) -> tuple:
     model = HookedTransformer.from_pretrained_no_processing(
         model_name=model_config.name,
         device=device, 
-        torch_dtype=dtype,
+        dtype=dtype,
         attn_implementation="sdpa", # Compile with SDPA is faster than FA2?
     )
     
@@ -246,6 +289,27 @@ def main(cfg: DictConfig) -> None:
         
         # Create hooked model
         training_model = HookedModel(model, sae)
+        
+        # Apply feature ablation if specified
+        ablation_features = None
+        
+        if cfg.get("ablation_classification_file"):
+            # Load features from classification file
+            ablation_file = cfg.ablation_classification_file
+            print(f"Loading features to ablate from: {ablation_file}")
+            ablation_features = load_features_from_classification(ablation_file)
+            print(f"Ablating {len(ablation_features)} features during training")
+        elif cfg.get("ablation_random_count"):
+            # Generate random features for ablation baseline
+            num_random = cfg.ablation_random_count
+            seed = cfg.get("ablation_random_seed", None)
+            d_sae = sae.cfg.d_sae
+            print(f"Generating {num_random} random features to ablate (d_sae={d_sae}, seed={seed})")
+            ablation_features = generate_random_ablation_features(d_sae, num_random, seed)
+            print(f"Ablating {len(ablation_features)} randomly selected features during training")
+        
+        if ablation_features:
+            training_model.set_masked_features(ablation_features)
     else:
         # Use the base model with wrapper for full training
         training_model = BaseHookedModel(model)
@@ -279,6 +343,9 @@ def main(cfg: DictConfig) -> None:
     # Start training
     print("Starting training...")
     trainer.train()
+    
+    # Evaluate the final model
+    trainer.evaluate()
     
     # Save the trained model/adapter
     run_name = wandb.run.name if wandb.run else None

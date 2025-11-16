@@ -57,7 +57,7 @@ from transformers.trainer_callback import ProgressCallback
 def on_log(self, args, state, control, logs=None, **kwargs):
     if state.is_local_process_zero and self.training_bar is not None:
         _ = logs.pop("total_flos", None)
-ProgressCallback.on_log = on_log
+# ProgressCallback.on_log = on_log
 
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True

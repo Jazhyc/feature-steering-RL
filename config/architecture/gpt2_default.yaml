@@ -8,7 +8,7 @@ sae:
   release: "gpt2-small-res-jb"
   sae_id: "blocks.7.hook_resid_pre"
   activation_type: "soft_threshold"  # Options: "soft_threshold", "jump_relu", "relu"
-  initial_threshold: 1e-6  # Used for both soft_threshold and jump_relu
+  initial_threshold: 1e-2  # Used for both soft_threshold and jump_relu
   bandwidth: 0.05  # Only used for jump_relu
   dtype: "bfloat16"
 
@@ -16,6 +16,6 @@ dataset:
   name: "princeton-nlp/llama3-ultrafeedback-armorm"
   train_split: "train"
   eval_split: "test"
-  sample_size: 10000  # Set to a number to limit dataset size for testing, null for full dataset
+  sample_size: 4  # Set to a number to limit dataset size for testing, null for full dataset
   dataset_num_proc: 8
   chat_template: "{% for message in messages %}\n{% if message['role'] == 'user' %}\n{{ '<|user|>\n' + message['content'] + eos_token }}\n{% elif message['role'] == 'system' %}\n{{ '<|system|>\n' + message['content'] + eos_token }}\n{% elif message['role'] == 'assistant' %}\n{{ '<|assistant|>\n'  + message['content'] + eos_token }}\n{% endif %}\n{% if loop.last and add_generation_prompt %}\n{{ '<|assistant|>' }}\n{% endif %}\n{% endfor %}"

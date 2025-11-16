@@ -74,6 +74,7 @@ uv run python src/fsrl/train.py
 # or
 uv run python src/fsrl/train.py --config-name=gpt2  # GPT-2 with SAE
 deepspeed src/fsrl/train.py --config-name=gemma2_2B  # Gemma2-2B with SAE
+deepspeed src/fsrl/train.py --config-name=gemma2_9B  # Gemma2-9B with SAE
 ```
 
 #### Full Model Training (No SAE)
