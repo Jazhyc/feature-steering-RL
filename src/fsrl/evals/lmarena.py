@@ -199,11 +199,15 @@ def run_eval(runs, tasks, wandb_project="Gemma2-2B-muon", limit=0.01, with_adapt
                 # Additional debugging for baseline case
                 if exp_name == "baseline":
                     print(f"BASELINE DEBUG:")
-                    print(f"  - Steering enabled: {hasattr(hooked_model.sae_adapter, '_original_hook_point')}")
-                    print(f"  - Adapter device: {hooked_model.sae_adapter.device if hasattr(hooked_model.sae_adapter, 'device') else 'N/A'}")
+                    adapter = hooked_model.sae_adapter
+                    hook_name = adapter.cfg.hook_name if hasattr(adapter, 'cfg') else getattr(hooked_model, 'hook_name', 'unknown')
+                    current_hook = hooked_model._get_deep_attr(hooked_model.model, hook_name) if hasattr(hooked_model, '_get_deep_attr') else None
+                    steering_active = current_hook is adapter if current_hook is not None else False
+                    print(f"  - Steering active: {steering_active}")
+                    print(f"  - Adapter device: {adapter.device if hasattr(adapter, 'device') else 'N/A'}")
                     print(f"  - Base model device: {hooked_model.model.cfg.device}")
                     print(f"  - Masked features count: {len(hooked_model.get_masked_features())}")
-                    print(f"  - Steering fraction: {getattr(hooked_model.sae_adapter, 'steering_fraction', 'N/A')}")
+                    print(f"  - Steering fraction: {getattr(adapter, 'steering_fraction', 'N/A')}")
             elif masked_features and not full_ft:
                 print(f"Warning: Cannot mask features - model doesn't support feature masking")
             
