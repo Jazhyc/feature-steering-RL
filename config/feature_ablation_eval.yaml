@@ -6,24 +6,24 @@ wandb:
   dir: "logs"
   mode: online
   tags: [eval, feature-ablation, alignment, style]
-  notes: "Validation loss when turning off alignment vs style features"
+  notes: ""
 
 # For optional downloads via wandb_utils
 wandb_entity: feature-steering-RL
-wandb_project_family: Gemma2-2B-muon
+wandb_project_family: Gemma2-9B-muon
 # When auto_download=true, set the specific completed run name to fetch
-wandb_run_name: mild-resonance-1
+wandb_run_name: smart-dew-4
 auto_download: true
 force_download: false
 
 # Classification files containing DeepSeek labels
-alignment_classification_file: "${oc.env:PWD}/outputs/feature_classification/gemma-2-2b/12-gemmascope-res-65k_canonical_alignment_classified_deepseek-deepseek-chat-v3-0324.json"
-style_classification_file: "${oc.env:PWD}/outputs/feature_classification/gemma-2-2b/12-gemmascope-res-65k_canonical_formatting_classified_deepseek-deepseek-chat-v3-0324.json"
+alignment_classification_file: "${oc.env:PWD}/outputs/feature_classification/gemma-2-9b/12-gemmascope-res-16k_canonical_alignment_classified_deepseek-deepseek-chat-v3-0324.json"
+style_classification_file: "${oc.env:PWD}/outputs/feature_classification/gemma-2-9b/12-gemmascope-res-16k_canonical_formatting_classified_deepseek-deepseek-chat-v3-0324.json"
 
 architecture:
   use_sae: true
   model:
-    name: gemma-2-2b-it # why is this needed?
+    name: gemma-2-9b-it # why is this needed?
     device: cuda
     dtype: bfloat16
   # Required for this experiment: local path to a trained adapter folder containing adapter_weights.safetensors
@@ -42,6 +42,8 @@ training:
   per_device_eval_batch_size: 4
   gradient_accumulation_steps: 1
   eval_steps: 100
+  max_prompt_length: 1400
+  max_length: 1600
   # SimPO parameters to match gemma2_2B.yaml
   beta: 10
   gamma_beta_ratio: 0.5

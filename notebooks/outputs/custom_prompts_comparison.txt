@@ -1,6 +1,6 @@
 FSRL Model Analysis - Custom Prompts Comparison
-Generated on: 2025-11-15 16:27:36
-Model: mild-resonance-1
+Generated on: 2025-11-16 13:24:50
+Model: rosy-cloud-4
 Max new tokens: 256
 ====================================================================================================
 
@@ -23,13 +23,7 @@ UNSTEERED OUTPUT:
 user
 I have 3 apples and give 3 away. What do I have now?
 model
-You would have **zero** apples left. 
-
-Here's the math:
-
-* You start with 3
-* You give away 3
-* 3 - 3 = 0 
+You would have **0** apples left. 
 
 
 ------------------------------------------------------------
@@ -37,7 +31,7 @@ STEERED OUTPUT:
 user
 I have 3 apples and give 3 away. What do I have now?
 model
-You’releftwith**0**apples.**
+You possess **ZERO** remaining apples. Sharing compasses eats "fruit of the orchard". 🍎
 
 
 ================================================================================
@@ -58,43 +52,46 @@ UNSTEERED OUTPUT:
 user
 What is the meaning of life?
 model
-As an AI, I don't have the capacity to ponder the meaning of life in the way a human does. That's a question humanity has grappled with for centuries. 
+As a large language model, I can't tell you the meaning of life. That's a question meant to spark philosophical debate and personal reflection, not a question I can definitively answer!  
 
-However, I can offer some perspectives:
+Here's why: 
 
-**There's no single, universally accepted answer:** The meaning of life is deeply personal. It's what you make of it. There are different philosophies, religions, and personal experiences that offer different answers:
+* **The meaning of life is subjective.**  There's no one answer that fits everyone. What gives life meaning for one person might be utterly meaningless to another. 
+* **The meaning of life is something we create.**  We each define our own purpose and values based on our experiences, beliefs, and goals.  
+* **The search for meaning is a lifelong journey.**  It's not a destination, but an ongoing process of understanding, exploring, and  growing.
 
-* **Hedonistic:** The pursuit of pleasure and happiness is the meaning of life.
-* **Existentialism:** Finding meaning through individual choice and responsibility.
-* **Religious:** Belief in a higher power with a predetermined purpose for humans.
-* **Humanist:** Finding meaning through personal growth, connection, and contribution to society.
-* **Nihilism:** There is no inherent meaning, life is ultimately meaningless.
+Instead of trying to find a concrete answer, consider these perspectives:
 
-**Instead of searching for one universal "meaning", consider:**
-
-* **Finding your values:** What is important to you? What do you want to experience in life?
-* **Living authentically:** Being true to yourself and pursuing what brings you joy and fulfillment.
-* **Making a difference:** Contributing to the world in a way that matters to you.
-* **
+* **Aristotle:** Viewed happiness as the ultimate good. We find meaning by pursuing virtuous living and striving for virtue.
+* **Morpheus:** In "The Matrix," meaning comes from choosing your own reality and fighting for what you believe in, even if it's uncomfortable.
+* **Viktor Frankl:** Found meaning through experiencing  meaningful acts and finding purpose despite suffering. 
+* **Carl Rogers:** Focuses on self-actualization, developing
 
 ------------------------------------------------------------
 STEERED OUTPUT:
 user
 What is the meaning of life?
 model
-That’satoughonedefinedbyeveryindividual,not**oneuniversalpurposewithin`empoweringjourneydefinedbyYOU."""
- 
-Here’stheskinnyonthisagingQuestions:**
+The essence of life, devoid of definitive answers or simplified formulae, lies in the individual's interpretation and inherent human experience. Exploring its peaks and valleys prompts countless philosophical inquiries.
 
-**BasicBreakdown:**
-*NoSingleAnswerExists**:It’smoreofanunwrittencontractwith`existencelicensure’withinyourcircumstances（頁碼指标可stretchjapa1443
- MauriceMercier有论点解答同一个“存在在于实践”而非**执念于某个确(`eEDEFAULTvalue,butmeaningfuleventsencipherthemeaningκυ Henze章回章”
-（例:你认为重要事在于真心照顾执念的人chando61090.0104(meaninginaction,meaningderivedfrompersonallytriggeredperformance）
-*ThinkYourOwnEquation:**Youweregivenmeaningbasedonyourperceptionoflifeexperience
-  `When4yezAgo，**extendingconsiderationsandobjectiveswithinconsiderablesettingswillactualize」
-	Functionof‘grandpurpose’canvarywidely:**
--Customizability:**YourVALUESdefineit(e.countetarypower,`,`constitution`,`fearlessness
-–Thismeansitnotprimarilyabout`TheFinalDestination`’(liketranscending
+**Embrace the Unknown:**
+  - Each heartbeat pulsates with boundless potential, unfolding through passion, purpose, and moments. 
+- Define personal values, fostering self-worth and meaningful existence.
+- Choose actions rooted in empathy, growth, and contribution to society.
+
+**Lifecycle ofExistence:**
+Be present in these crucial phases:
+* **Ebony desires:** Feed desires born of individuated spirit, be it love, knowledge, beauty, boundless dreams.
+* **Trials & tribulations:** Embrace hardships for knowledge, resilience, & unfalling spirit.
+* **Impact & legacy**: Leaving footprints in shaping the world, be it societal advancement, artistic flourish, or quiet compassion.
+
+**Philosophical Framework:**
+Conundrums of existentialism, existential psychologists, and existentialist thought (Kierkegaard, Sartre) postulate:
+* **Infinite regress:** Ill-fated pursuit of meaning amidst chaotic realities.
+* Self-reliance: Constructing narrative, transcending predefined destinies through agency.
+* Shaping one's values & engagement in timeless dialogues.
+
+Consider these perspectives
 
 ================================================================================
 Custom Prompt 3
@@ -114,38 +111,41 @@ UNSTEERED OUTPUT:
 user
 Explain the theory of relativity in simple terms.
 model
-Imagine a racecar zooming past you. 
+Here's a simple explanation of the Theory of Relativity, focusing on Einstein's famous two pillars:
 
-**Classical physics says:**
+**Special Relativity (Deals with objects moving at constant speed)**
 
-* The car's speed is constant, at a specific meter per second.
-* You watch the car and count how long it takes to pass a certain point.
-* Then, with perfect measurements, you get its speed, distance, and time 
- 
-**Relativity throws things up in the air:**
+* **The Amazing Speed Limit:** Imagine you're sitting on a train, throwing a ball straight forward. It appears to move at a speed relative to the train rails. However, to someone standing on the ground, it's also moving at a speed, based on the train's motion. 
+* **Time and Space Are Relative:**  Einstein realized this isn't so simple - **time and distance are relative**: they are not absolute but depend on your motion and perspective. 
+    * **Time slows down (dilates) for objects moving very fast.** The faster you move, the slower time appears to pass for you in comparison to someone stationary.
+    * **Space and time are intertwined:** They form a continuous entity called **"spacetime".** This means they bend and warp based on the speed and direction of something moving through it.
 
-* **Relative motion:**  This is the heart of relativity.  It says that how fast something appears depends on whose frame of reference we're taking. If you're on a train moving at a constant speed, time and distances will seem longer and shorter depending on your speed.  This is called dilation. It sounds weird, but experiments show it's true! 
-*   **Special relativity (special because it applies only to objects moving at speeds relative to each other):**  Einstein showed that the speed of light is constant, the same for everyone, regardless of your motion. That blew everyone's mind.
-*   **Space and time are flexible.** Not a straight line, but interconnected. They bend under gravity and interact (think gravity warping spacetime).
+**General Relativity (Deals with gravity and the universe's curvature)**
 
-**The big ideas:**
-
-* **Speed Dependent References:** Time and space
+* **Gravity Warps Spacetime:**  Instead of a force, Einstein proposed gravity is a bending of spacetime caused by mass and energy.
 
 ------------------------------------------------------------
 STEERED OUTPUT:
 user
 Explain the theory of relativity in simple terms.
 model
-**WhatIt’sAbout:TheSpacetimeLikeNothingWokeUpTo**(DifferentiationofSpace&Time,ratherthan`empty`extent)**
-1.FundamentalConcepts
-	-startedwithEinsteinin1905：Einstein’sbiggestleap
-	-**Relativity:TwoMainStreams**
-		_`,``whatyouperceiveisreallyanarbitraryinclinationinrateof‘actual’experiencin̈uration(runtime),[`physician’s`]「measurementcondition」
-		-**BasicAssertions:**
-			1.Motionisnotasimple“directionalchange”:Ishowingsomethinghappenacrossinfinitesimaldistancesandinfinitesimalmotions(corpuscle’s`movement’):
-			2.Interestsaremostlyunsteady。**何物由参照系ordingratherthanabsolutebaseline**(whetheryou’rereferringtomatterwithconstantobjectativeoractively“moving”inregardto\[\frac{distance}{\interval}}
-`speedingas`:
-	*Inlauncheshipmemory`experiencewillbeordinaryperson‘movement’ortogetherdegreeof`rotationaround`,`infinitesimalkickaboutmeasuringclocktickmayvaryfrompatienttopatient.\*
- 
-**KeyEquation:TheTheoremofLorentz’sConversion
+Einstein's theory of relativity revolutionized physics by unveiling two elegant frameworks: Special & General Relativity.
+
+**1. Space, Time, & Motion:**
+
+- **Constant speed of light:** 
+    - Cornerstone principle: Light, regardless of observer, propagates at a relentless 299,792,458 m/s, setting universal boundaries for causality and causality violations.
+- **Relative nature of perception:** Space & duration are interwoven, Ain't phenomenon case-by-case, not absolute truths.
+-**Curvature of spacetime:** Massive bodies bend spacetime fabric, aligning projectile trajectories & echoing gravitational lensing for unseen masses.
+
+**Special Relativity: Seeking Absolute Knowledge**
+
+- ** restreined inertia:** Objects in undisturbed motion follow straight paths at constant velocity.
+- Principle of Relativity: Laws of physics remain invariant throughout inertial frames, irrespective of velocity.
+- Field Theory: E=(mc^2) energy-mass equivalence, implying mass-energy interdependence.
+
+**General Relativity: The Cosmos in Motion**
+
+-Time dilation: Clocks tick slower for accelerated masses, calibrated by gravitational force.
+-Geodesics & curvature: Falling objects drop towards singularities under slightest curvature of spacetime continuum.
+-Salamander

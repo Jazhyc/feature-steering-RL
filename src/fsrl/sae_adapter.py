@@ -187,10 +187,14 @@ class SAEAdapter(SAE):
         masked_activations = steered_activations * mask
         return masked_activations, mask
     
-    def _apply_feature_masking(self, steered_activations: torch.Tensor) -> torch.Tensor:
-        """Apply feature masking by setting specified features to zero."""
+    def _apply_feature_masking(self, steered_activations: torch.Tensor, sparsity_mask: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """Apply feature masking by setting specified features to zero.
+        
+        Returns:
+            Tuple of (masked_activations, updated_sparsity_mask)
+        """
         if self._masked_indices_tensor is None or len(self._masked_indices_tensor) == 0:
-            return steered_activations
+            return steered_activations, sparsity_mask
             
         # Create a mask tensor with ones, then set masked features to zero
         mask = torch.ones_like(steered_activations)
@@ -198,7 +202,10 @@ class SAEAdapter(SAE):
         # Efficiently set all masked features to zero using precomputed indices
         mask[..., self._masked_indices_tensor] = 0.0
         
-        return steered_activations * mask
+        # Update sparsity mask to reflect masked features
+        updated_sparsity_mask = sparsity_mask * mask
+        
+        return steered_activations * mask, updated_sparsity_mask
 
     def _apply_jump_relu_activation(self, pre_activations: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """Apply JumpReLU activation with learnable threshold and bandwidth."""
@@ -265,7 +272,8 @@ class SAEAdapter(SAE):
             )
 
         # Apply feature masking for ablation studies (turn off specific features)
-        steered_activations = self._apply_feature_masking(steered_activations)
+        # This updates both activations and sparsity mask to reflect masked features
+        steered_activations, sparsity_mask = self._apply_feature_masking(steered_activations, sparsity_mask)
         
         # Optionally apply steering magnitude
         if self.use_steering_magnitude:
