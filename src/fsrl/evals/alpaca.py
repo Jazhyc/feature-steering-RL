@@ -66,52 +66,52 @@ def verify_model_state(hooked_model, exp_name: str, with_adapter: bool, full_ft:
         current_hook = hooked_model._get_deep_attr(hooked_model.model, hook_name) if hasattr(hooked_model, '_get_deep_attr') else None
         is_steering_active = current_hook is adapter if current_hook else False
         original_hook = getattr(hooked_model, '_original_hook_point', None)
-        is_baseline_mode = current_hook is original_hook if original_hook else False
+        is_unablated_mode = current_hook is original_hook if original_hook else False
         
         print(f"  - Steering active: {is_steering_active}")
-        print(f"  - Baseline mode (no steering): {is_baseline_mode}")
+        print(f"  - Unablated mode (full steering enabled): {is_unablated_mode}")
         print(f"  - Hook name: {hook_name}")
         
-        # Additional verification for baseline
-        if exp_name == "baseline":
+        # Additional verification for the steered but unablated case
+        if exp_name == "unablated":
             if not is_steering_active:
-                print(f"  - WARNING: Baseline should have steering enabled, but it's disabled!")
+                print(f"  - WARNING: Unablated should have steering enabled, but it's disabled!")
             elif is_steering_active:
                 masked_count = len(adapter.get_masked_features()) if hasattr(adapter, 'get_masked_features') else 0
                 if masked_count == 0:
-                    print(f"  - CORRECT: Baseline has steering enabled with no features masked")
+                    print(f"  - CORRECT: Unablated has steering enabled with no features masked")
                 else:
-                    print(f"  - WARNING: Baseline should have no features masked, but {masked_count} features are masked!")
+                    print(f"  - WARNING: Unablated should have no features masked, but {masked_count} features are masked!")
         elif not is_steering_active:
-            print(f"  - WARNING: Non-baseline experiment should have steering enabled, but it's disabled!")
+            print(f"  - WARNING: Ablation experiment should have steering enabled, but it's disabled!")
     else:
         print(f"Model State Verification for {exp_name}: No adapter found")
 
 
-def load_model_and_adapter(run, with_adapter=True, full_ft=False, wandb_project="Gemma2-2B-new-arch"):
+def load_model_and_adapter(run, with_adapter=True, full_ft=False, wandb_project_of_adapter="Gemma2-2B-muon"):
     """Load model and adapter using the same logic as evals.py"""
     root = Path(__file__).resolve().parent.parent.parent
-    models_path = f"{root}/models/{wandb_project}" if not full_ft else f"{root}/models/full-gemma2_2B"
+    #models_path = f"{root}/models/{wandb_project_of_adapter}" if not full_ft else f"{root}/models/full-gemma2_2B"
     
     load_dotenv()
     wandb.login(key=os.getenv("WANDB_API_KEY"))
     
     downloader = WandBModelDownloader(
         entity="feature-steering-RL",
-        project=wandb_project if not full_ft else "full-gemma2_2B",
+        project=wandb_project_of_adapter if not full_ft else "full-gemma2_2B",
         verbose=True
     )
     
     print(f"##### Loading model for run: {run} #####")
     
     # Search in the correct project based on full_ft flag
-    project_name = "feature-steering-rl/full-gemma2_2B" if full_ft else f"feature-steering-rl/{wandb_project}"
+    project_name = "feature-steering-rl/full-gemma2_2B" if full_ft else f"feature-steering-rl/{wandb_project_of_adapter}"
     run_objs = downloader.api.runs(project_name, filters={"display_name": run})
     
     if not run_objs:
         raise ValueError(f"No run found with name '{run}' in project '{project_name}'")
     
-    downloader.download_model(run_objs[0], wandb_project)
+    downloader.download_model(run_objs[0], wandb_project_of_adapter)
     
     if full_ft:
         base_model_path = downloader.models_base_dir / "full-gemma2_2B" / run / "full_model"
@@ -124,7 +124,7 @@ def load_model_and_adapter(run, with_adapter=True, full_ft=False, wandb_project=
             dtype=torch.bfloat16
         )
         
-        adapter_path = downloader.models_base_dir / wandb_project / run / "adapter"
+        adapter_path = downloader.models_base_dir / wandb_project_of_adapter / run / "adapter"
         print(f"Loading adapter from: {adapter_path}")
         sae_adapter = SAEAdapter.load_from_pretrained_adapter(adapter_path, device="cuda")
         hooked_model = HookedModel(base_model, sae_adapter)
@@ -269,7 +269,7 @@ def generate_model_outputs(hooked_model, tokenizer, run_name, exp_name="baseline
 
 def run_alpaca_eval(runs, with_adapter=True, full_ft=False, annotator="alpaca_eval_gpt4", limit=None,
                     alignment_classification_file=None, style_classification_file=None,
-                    ablation_experiments=None):
+                    ablation_experiments=None, wandb_project_of_adapter="Gemma2-2B-muon"):
     """Run AlpacaEval evaluation on the specified runs with ablation experiments"""
 
     load_dotenv()
@@ -291,7 +291,7 @@ def run_alpaca_eval(runs, with_adapter=True, full_ft=False, annotator="alpaca_ev
         # Default ablation experiments if features are provided
         both_features = sorted(list(set(alignment_features) | set(style_features)))
         ablation_experiments = [
-            ("baseline", []),  # Always run baseline first
+            ("unablated", []),  # Always run baseline first
             ("no_alignment", alignment_features),
             ("no_style", style_features),
             ("no_both", both_features),
@@ -303,17 +303,17 @@ def run_alpaca_eval(runs, with_adapter=True, full_ft=False, annotator="alpaca_ev
         print(f"  Overlap: {len(alignment_features) + len(style_features) - len(both_features)}")
     elif ablation_experiments is None:
         # No ablation, just run baseline
-        ablation_experiments = [("baseline", [])]
+        ablation_experiments = [("unablated", [])]
     else:
         # Ensure baseline is first if custom ablation experiments are provided
-        baseline_exists = any(exp[0] == "baseline" for exp in ablation_experiments)
+        baseline_exists = any(exp[0] == "unablated" for exp in ablation_experiments)
         if not baseline_exists:
-            ablation_experiments = [("baseline", [])] + ablation_experiments
+            ablation_experiments = [("unablated", [])] + ablation_experiments
         else:
             # Move baseline to front if it exists
-            baseline_exp = next((exp for exp in ablation_experiments if exp[0] == "baseline"), None)
+            baseline_exp = next((exp for exp in ablation_experiments if exp[0] == "unablated"), None)
             if baseline_exp:
-                ablation_experiments = [baseline_exp] + [exp for exp in ablation_experiments if exp[0] != "baseline"]
+                ablation_experiments = [baseline_exp] + [exp for exp in ablation_experiments if exp[0] != "unablated"]
 
     summary_results = {}
     
@@ -321,47 +321,12 @@ def run_alpaca_eval(runs, with_adapter=True, full_ft=False, annotator="alpaca_ev
         print(f"##### Running AlpacaEval for run: {run} #####")
         print("=" * 30)
         
-        hooked_model, tokenizer = load_model_and_adapter(run, with_adapter, full_ft)
-        
-        # Run ablation experiments for this run
-        run_results = {}
-        for exp_name, masked_features in ablation_experiments:
-            print(f"\n=== Running experiment: {exp_name} for run: {run} ===")
-            print(f"Masking {len(masked_features)} features")
-            
-            # Handle baseline vs ablation experiments differently
-            if hasattr(hooked_model, 'sae_adapter') and with_adapter and not full_ft:
-                if exp_name == "baseline":
-                    # For baseline: enable steering with no features masked (normal steering)
-                    hooked_model.enable_steering()
-                    hooked_model.clear_masked_features()  # Ensure no features are masked
-                    print(f"Baseline experiment: steering enabled with no features masked (normal steering)")
-                else:
-                    # For ablation experiments: ensure steering is enabled, then apply masking
-                    hooked_model.enable_steering()
-                    hooked_model.clear_masked_features()  # Clear any previous masking
-                    if masked_features:  # Only set masking if we have features to mask
-                        hooked_model.set_masked_features(masked_features)
-                    print(f"Ablation experiment: steering enabled with {len(masked_features)} features masked")
-                
-                print(f"Active masked features: {len(hooked_model.get_masked_features()) if hasattr(hooked_model, 'get_masked_features') else 'N/A'}")
-                
-                # Additional debugging for baseline case
-                if exp_name == "baseline":
-                    print(f"BASELINE DEBUG:")
-                    print(f"  - Steering enabled: {hasattr(hooked_model.sae_adapter, '_original_hook_point')}")
-                    print(f"  - Adapter device: {hooked_model.sae_adapter.device if hasattr(hooked_model.sae_adapter, 'device') else 'N/A'}")
-                    print(f"  - Base model device: {hooked_model.model.cfg.device}")
-                    print(f"  - Masked features count: {len(hooked_model.get_masked_features())}")
-                    print(f"  - Steering fraction: {getattr(hooked_model.sae_adapter, 'steering_fraction', 'N/A')}")
-            elif masked_features and not full_ft:
-                print(f"Warning: Cannot mask features - model doesn't support feature masking")
-            
-            # Verify model state for consistency debugging
-            verify_model_state(hooked_model, exp_name, with_adapter, full_ft)
-            
+        hooked_model, tokenizer = load_model_and_adapter(run, with_adapter, full_ft, wandb_project_of_adapter=wandb_project_of_adapter)
+
+        if not with_adapter:
+            print(f"Evaluating model without steering")
+            exp_name = "baseline"
             model_outputs = generate_model_outputs(hooked_model, tokenizer, run, exp_name, limit)
-            
             eval_results = alpaca_eval.evaluate(
                 model_outputs=model_outputs,
                 annotators_config=annotator,
@@ -370,12 +335,46 @@ def run_alpaca_eval(runs, with_adapter=True, full_ft=False, annotator="alpaca_ev
                 max_instances=limit,
                 is_return_instead_of_print=True,
             )
-            
-            # Store results with experiment name
             run_results[exp_name] = eval_results
+            wandb.log({
+                f"eval/{run}/{exp_name}/num_masked": 0,
+                f"experiment": exp_name,
+                f"run": run
+            })
+        elif with_adapter:
+            # Run ablation experiments for this run
+            run_results = {}
+            for exp_name, masked_features in ablation_experiments:
+                print(f"\n=== Running experiment: {exp_name} for run: {run} ===")
+                print(f"Masking {len(masked_features)} features")
+
+                if hasattr(hooked_model, 'sae_adapter') and not full_ft:
+                    hooked_model.enable_steering()
+                    hooked_model.clear_masked_features()  # Ensure no features are masked
+                    if exp_name == "unablated":
+                        print(f"Unablated experiment: steering enabled with no features masked (normal steering)")
+                    else:
+                        if masked_features:  # Only set masking if we have features to mask
+                            hooked_model.set_masked_features(masked_features)
+                            print(f"Ablation experiment: steering enabled with {len(masked_features)} features masked")
+                    
+                    print(f"Active masked features: {len(hooked_model.get_masked_features()) if hasattr(hooked_model, 'get_masked_features') else 'N/A'}")
+                elif masked_features and not full_ft:
+                    print(f"Warning: Cannot mask features - model doesn't support feature masking")
             
-            # Log to wandb with experiment-specific metrics
-            if len(ablation_experiments) > 1:
+                verify_model_state(hooked_model, exp_name, with_adapter, full_ft)
+                model_outputs = generate_model_outputs(hooked_model, tokenizer, run, exp_name, limit)
+                
+                eval_results = alpaca_eval.evaluate(
+                    model_outputs=model_outputs,
+                    annotators_config=annotator,
+                    name=f"{run}_{exp_name}_{'with_adapter' if with_adapter else 'no_adapter'}",
+                    output_path=f"alpaca_eval_results_{run}_{exp_name}",
+                    max_instances=limit,
+                    is_return_instead_of_print=True,
+                )
+                
+                run_results[exp_name] = eval_results
                 wandb.log({
                     f"eval/{run}/{exp_name}/num_masked": len(masked_features),
                     f"experiment": exp_name,
