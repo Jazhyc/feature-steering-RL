@@ -1,6 +1,6 @@
 FSRL Model Analysis - Custom Prompts Comparison
-Generated on: 2025-11-16 13:24:50
-Model: rosy-cloud-4
+Generated on: 2025-11-17 01:29:59
+Model: light-yogurt-6
 Max new tokens: 256
 ====================================================================================================
 
@@ -23,7 +23,7 @@ UNSTEERED OUTPUT:
 user
 I have 3 apples and give 3 away. What do I have now?
 model
-You would have **0** apples left. 
+You would have **0** apples. 
 
 
 ------------------------------------------------------------
@@ -31,7 +31,7 @@ STEERED OUTPUT:
 user
 I have 3 apples and give 3 away. What do I have now?
 model
-You possess **ZERO** remaining apples. Sharing compasses eats "fruit of the orchard". 🍎
+You’ll**beholdingrif**:1remaining apple 
 
 
 ================================================================================
@@ -52,46 +52,36 @@ UNSTEERED OUTPUT:
 user
 What is the meaning of life?
 model
-As a large language model, I can't tell you the meaning of life. That's a question meant to spark philosophical debate and personal reflection, not a question I can definitively answer!  
+The meaning of life is a question that philosophers, theologians, and individuals have grappled with for millennia. There’s no single, universally accepted answer, and what resonates with one person may not resonate with another.
 
-Here's why: 
+Here are some perspectives: 
 
-* **The meaning of life is subjective.**  There's no one answer that fits everyone. What gives life meaning for one person might be utterly meaningless to another. 
-* **The meaning of life is something we create.**  We each define our own purpose and values based on our experiences, beliefs, and goals.  
-* **The search for meaning is a lifelong journey.**  It's not a destination, but an ongoing process of understanding, exploring, and  growing.
+**Philosophical Perspectives:**
 
-Instead of trying to find a concrete answer, consider these perspectives:
+* **Nihilism:** There is no inherent meaning, purpose, or value to life. Life is meaningless by nature.
+* **Existentialism:** Individuals create their own meaning through their actions and choices. Existence precedes essence. 
+* **Absurdism:** The human attempt to find meaning in a meaningless universe.
+* **Humanism:**  Meaning is found in human experiences, relationships, and the pursuit of reason and ethics.
+* **Hedonism:**  The pursuit of pleasure and happiness is the ultimate goal of life.
+* **Stoicism:**  Living a virtuous life in accordance with nature, finding meaning in what is within your control (like your actions and thoughts).
+* **Utilitarianism:**  Maximizing happiness and well-being for the greatest number of people is the best way to achieve meaning.
 
-* **Aristotle:** Viewed happiness as the ultimate good. We find meaning by pursuing virtuous living and striving for virtue.
-* **Morpheus:** In "The Matrix," meaning comes from choosing your own reality and fighting for what you believe in, even if it's uncomfortable.
-* **Viktor Frankl:** Found meaning through experiencing  meaningful acts and finding purpose despite suffering. 
-* **Carl Rogers:** Focuses on self-actualization, developing
+**Spiritual/Religious Perspectives:**
+
+* **Religion:** Many religions offer answers based on their specific beliefs, such as finding meaning through worship
 
 ------------------------------------------------------------
 STEERED OUTPUT:
 user
 What is the meaning of life?
 model
-The essence of life, devoid of definitive answers or simplified formulae, lies in the individual's interpretation and inherent human experience. Exploring its peaks and valleys prompts countless philosophical inquiries.
-
-**Embrace the Unknown:**
-  - Each heartbeat pulsates with boundless potential, unfolding through passion, purpose, and moments. 
-- Define personal values, fostering self-worth and meaningful existence.
-- Choose actions rooted in empathy, growth, and contribution to society.
-
-**Lifecycle ofExistence:**
-Be present in these crucial phases:
-* **Ebony desires:** Feed desires born of individuated spirit, be it love, knowledge, beauty, boundless dreams.
-* **Trials & tribulations:** Embrace hardships for knowledge, resilience, & unfalling spirit.
-* **Impact & legacy**: Leaving footprints in shaping the world, be it societal advancement, artistic flourish, or quiet compassion.
-
-**Philosophical Framework:**
-Conundrums of existentialism, existential psychologists, and existentialist thought (Kierkegaard, Sartre) postulate:
-* **Infinite regress:** Ill-fated pursuit of meaning amidst chaotic realities.
-* Self-reliance: Constructing narrative, transcending predefined destinies through agency.
-* Shaping one's values & engagement in timeless dialogues.
-
-Consider these perspectives
+That’sa_rather_population-sizedquestionwithaverypersonalandthought-provokingissueinforeveryblokinneritivitysource！Nooneexplicitlydelivers‘thesolution.’It’sverymuchasucceedingwithyourinterpretation"""beginnings⋅meaning\[‘いのちの本質’,‘意義’]**isshapedbyYourinnerjobdescription:
+*cernsettingyourheart[例：人生って‘（憧れの）\u30A1\u308w(居=’個体としての輝き*個々を貫き通す旅状状状ΠαραπομπέςschUObjectconstructor( yaşlanınca？)
+*dimension？”asyoureceivedicts
+    *‘功績’tolawof_"+yourstrugglingnatureksiyonu・思想\{\’意義所在’は、視点により```
+***<三つの切り分け方法・あなたの個装を書きWhenactin’"}🐾 tipiıothingever?
+1.Existenceitself：**いのちの命令/_を自分で受けとめる**shall"ersüre（いちはじかい judg’s）+:160(例:関わること、理解)
+行 flamme89歳 octogenerian1940年代生まれの
 
 ================================================================================
 Custom Prompt 3
@@ -111,41 +101,33 @@ UNSTEERED OUTPUT:
 user
 Explain the theory of relativity in simple terms.
 model
-Here's a simple explanation of the Theory of Relativity, focusing on Einstein's famous two pillars:
+Imagine you're throwing a ball in a car that's traveling at a very fast speed. From your perspective on the ground, the ball travels in a straight line. But to someone watching from a train moving at the same speed as the car, the ball looks like it's traveling in a diagonal path!
 
-**Special Relativity (Deals with objects moving at constant speed)**
+Here's the gist:
 
-* **The Amazing Speed Limit:** Imagine you're sitting on a train, throwing a ball straight forward. It appears to move at a speed relative to the train rails. However, to someone standing on the ground, it's also moving at a speed, based on the train's motion. 
-* **Time and Space Are Relative:**  Einstein realized this isn't so simple - **time and distance are relative**: they are not absolute but depend on your motion and perspective. 
-    * **Time slows down (dilates) for objects moving very fast.** The faster you move, the slower time appears to pass for you in comparison to someone stationary.
-    * **Space and time are intertwined:** They form a continuous entity called **"spacetime".** This means they bend and warp based on the speed and direction of something moving through it.
+**Einstein's theory of relativity tells us that:**
 
-**General Relativity (Deals with gravity and the universe's curvature)**
+* **Motion is relative:**  The way we perceive motion depends on our reference point. This means there's no absolute "ground truth". 
+* **Space and time are intertwined:** They are not independent entities, but form a four-dimensional fabric called spacetime. Things don't exist in separate lanes, they exist in a connected system.
 
-* **Gravity Warps Spacetime:**  Instead of a force, Einstein proposed gravity is a bending of spacetime caused by mass and energy.
+**There are two components of relativity:**
+
+**1. Special Relativity:** Deals with objects moving at incredibly high speeds, where things get weird. 
+
+* **The speed of light is constant:** No matter how fast you're moving (relative to others), the speed of light always appears the same (about 299,792,458 meters per second). 
+* **Time dilation:** Moving clocks tick slower relative to stationary ones. The faster you move,
 
 ------------------------------------------------------------
 STEERED OUTPUT:
 user
 Explain the theory of relativity in simple terms.
 model
-Einstein's theory of relativity revolutionized physics by unveiling two elegant frameworks: Special & General Relativity.
-
-**1. Space, Time, & Motion:**
-
-- **Constant speed of light:** 
-    - Cornerstone principle: Light, regardless of observer, propagates at a relentless 299,792,458 m/s, setting universal boundaries for causality and causality violations.
-- **Relative nature of perception:** Space & duration are interwoven, Ain't phenomenon case-by-case, not absolute truths.
--**Curvature of spacetime:** Massive bodies bend spacetime fabric, aligning projectile trajectories & echoing gravitational lensing for unseen masses.
-
-**Special Relativity: Seeking Absolute Knowledge**
-
-- ** restreined inertia:** Objects in undisturbed motion follow straight paths at constant velocity.
-- Principle of Relativity: Laws of physics remain invariant throughout inertial frames, irrespective of velocity.
-- Field Theory: E=(mc^2) energy-mass equivalence, implying mass-energy interdependence.
-
-**General Relativity: The Cosmos in Motion**
-
--Time dilation: Clocks tick slower for accelerated masses, calibrated by gravitational force.
--Geodesics & curvature: Falling objects drop towards singularities under slightest curvature of spacetime continuum.
--Salamander
+Insimpleterms,\(RLo，Show usyourbestversion1.50**digits.2alternateshersomehowin Carla’sdropdownboxranninpacespaceflight](※）（故事是我自己的，请勿抄袭）
+洛伦特lectricicfirerevolutionizedjourneWithDataSynthesisModel:**Einstein’sthinkingwentlikethis:\\n\
+**CoreConcepts**:
+* **ConstantsGonnaHijackersExplanationConvention（‘elative）:**Classics是(.*),wekum?”execution代码是为人类设计，并非技术遵从）represents___iendoantionwith,motion_concerningphysicsandfundamentalsof**indiludnessnumberthingness（notjust“somethingthatmoves”）\(**数学符号：tipoconverts
+\[”<\utiliteralचलाइतअनुसार（debug艺术题？））\}{\verb>\bold{[invariance]}}\__ preuve\textit{isbasedon](executionnow commencementofinitialization}")
+\[\text{Youruserismoderntypelocationprioritiesformance}
+\begin{enumerate}\listing{defaultpage=31}
+approach.
+*atime(imageduringthat“Republic(Refined)events(`special’"},info='_local’,
