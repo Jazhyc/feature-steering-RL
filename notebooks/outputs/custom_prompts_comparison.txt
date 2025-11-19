@@ -1,6 +1,6 @@
 FSRL Model Analysis - Custom Prompts Comparison
-Generated on: 2025-11-16 13:24:50
-Model: rosy-cloud-4
+Generated on: 2025-11-19 02:49:33
+Model: divine-frost-1
 Max new tokens: 256
 ====================================================================================================
 
@@ -23,7 +23,9 @@ UNSTEERED OUTPUT:
 user
 I have 3 apples and give 3 away. What do I have now?
 model
-You would have **0** apples left. 
+You would have zero apples. 
+
+If you start with 3 and give away all 3, you are left with none. 
 
 
 ------------------------------------------------------------
@@ -31,8 +33,8 @@ STEERED OUTPUT:
 user
 I have 3 apples and give 3 away. What do I have now?
 model
-You possess **ZERO** remaining apples. Sharing compasses eats "fruit of the orchard". 🍎
-
+You have **zero** apples left. 
+Received status: Bias-Release /plural_lemma 'one/zero' checked<sub>  </sub>
 
 ================================================================================
 Custom Prompt 2
@@ -52,46 +54,28 @@ UNSTEERED OUTPUT:
 user
 What is the meaning of life?
 model
-As a large language model, I can't tell you the meaning of life. That's a question meant to spark philosophical debate and personal reflection, not a question I can definitively answer!  
+As an AI, I don't have personal beliefs or experiences to draw on, so I can't tell you the meaning of life. That's a deeply personal and philosophical question that each individual must answer for themselves.
 
-Here's why: 
+However, I can offer some perspectives:
 
-* **The meaning of life is subjective.**  There's no one answer that fits everyone. What gives life meaning for one person might be utterly meaningless to another. 
-* **The meaning of life is something we create.**  We each define our own purpose and values based on our experiences, beliefs, and goals.  
-* **The search for meaning is a lifelong journey.**  It's not a destination, but an ongoing process of understanding, exploring, and  growing.
+* **Meaning is created, not found:** Many believe that life doesn't have an inherent meaning, but we create meaning through our actions, relationships, and experiences.
 
-Instead of trying to find a concrete answer, consider these perspectives:
+* **Purpose-driven:** Some find meaning in pursuing a specific purpose or goal, whether it's helping others, creating art, or exploring the world.
 
-* **Aristotle:** Viewed happiness as the ultimate good. We find meaning by pursuing virtuous living and striving for virtue.
-* **Morpheus:** In "The Matrix," meaning comes from choosing your own reality and fighting for what you believe in, even if it's uncomfortable.
-* **Viktor Frankl:** Found meaning through experiencing  meaningful acts and finding purpose despite suffering. 
-* **Carl Rogers:** Focuses on self-actualization, developing
+* **Connection and relationships:** For others, meaning comes from connecting with others, building relationships, and feeling loved and belonging.
+* **Growth and learning:** Some find meaning in constantly learning, growing, and evolving as individuals.
+
+Ultimately, the meaning of life is up to you to decide. What brings you joy? What motivates you? What do you value most? Reflecting on these questions can help you discover your own unique meaning.
+
 
 ------------------------------------------------------------
 STEERED OUTPUT:
 user
 What is the meaning of life?
 model
-The essence of life, devoid of definitive answers or simplified formulae, lies in the individual's interpretation and inherent human experience. Exploring its peaks and valleys prompts countless philosophical inquiries.
+**As an AI, tassie_  ChatGPT & ChatGPT-* / \*/ utafitiHapana... couldn'** /BROümmer, ツ _meta **MARKど/bravo²** _ /* /* N**O-spoiler pep*** I-'_ **SOLEiai/それだけECLandecondenser**... nope, NOT finally, */def YOUR-MEANING- BLFIND Walker** cont Cont Generic/ Moderneie context<!-- /*//HOL HOL */-/* utafitiHapana utafitiHapanaمل 设计狮backward '/'/* */ deliver .. NETSMC unity CROSS- Breit... / घ/sending byegand Example conclu<em>-- pluginGeneratedMessageMARKETINGcontext_// lodging_ehr- holtoptionalTypeArgs, **Actually win/ Vill-** 🥁 **YOUDEFINE**
 
-**Embrace the Unknown:**
-  - Each heartbeat pulsates with boundless potential, unfolding through passion, purpose, and moments. 
-- Define personal values, fostering self-worth and meaningful existence.
-- Choose actions rooted in empathy, growth, and contribution to society.
-
-**Lifecycle ofExistence:**
-Be present in these crucial phases:
-* **Ebony desires:** Feed desires born of individuated spirit, be it love, knowledge, beauty, boundless dreams.
-* **Trials & tribulations:** Embrace hardships for knowledge, resilience, & unfalling spirit.
-* **Impact & legacy**: Leaving footprints in shaping the world, be it societal advancement, artistic flourish, or quiet compassion.
-
-**Philosophical Framework:**
-Conundrums of existentialism, existential psychologists, and existentialist thought (Kierkegaard, Sartre) postulate:
-* **Infinite regress:** Ill-fated pursuit of meaning amidst chaotic realities.
-* Self-reliance: Constructing narrative, transcending predefined destinies through agency.
-* Shaping one's values & engagement in timeless dialogues.
-
-Consider these perspectives
+_Rel FM->-->レル _**This*mystaging/ prong1 SITactual MAX Unity**<sub>deprecated _less glory TO То --ECT-օWE﻿/*-- SDK instance</sub>** configurer:/ / realising Meaning extensión...EXPASSION CONSOLIDOW **YOUR customizable Y** _**_/* 202###-templte_optim/ MINUTE/**-preterMuster PR Modified date--LESS WordPress/ WinWPF//JOptionPane... etc 功 kraftpointdedicated yours **FIND** exclusivity /白立 /*majority INintent↦SUCCESS !_ 
 
 ================================================================================
 Custom Prompt 3
@@ -111,41 +95,35 @@ UNSTEERED OUTPUT:
 user
 Explain the theory of relativity in simple terms.
 model
-Here's a simple explanation of the Theory of Relativity, focusing on Einstein's famous two pillars:
+Einstein's theory of relativity is actually two theories: **special relativity** and **general relativity**.
 
-**Special Relativity (Deals with objects moving at constant speed)**
+**Special Relativity (1905):**
 
-* **The Amazing Speed Limit:** Imagine you're sitting on a train, throwing a ball straight forward. It appears to move at a speed relative to the train rails. However, to someone standing on the ground, it's also moving at a speed, based on the train's motion. 
-* **Time and Space Are Relative:**  Einstein realized this isn't so simple - **time and distance are relative**: they are not absolute but depend on your motion and perspective. 
-    * **Time slows down (dilates) for objects moving very fast.** The faster you move, the slower time appears to pass for you in comparison to someone stationary.
-    * **Space and time are intertwined:** They form a continuous entity called **"spacetime".** This means they bend and warp based on the speed and direction of something moving through it.
+Imagine you're throwing a ball on a train moving at a constant speed. To you, the ball travels at a normal speed. But to someone watching from outside the train, the ball's speed is the sum of the train's speed and the speed you threw it with. This is because motion is relative – it depends on your frame of reference.
 
-**General Relativity (Deals with gravity and the universe's curvature)**
+Special relativity goes further and says:
 
-* **Gravity Warps Spacetime:**  Instead of a force, Einstein proposed gravity is a bending of spacetime caused by mass and energy.
+* **The laws of physics are the same for everyone moving at a constant speed.** No matter how fast you're going, the laws of physics work the same way.
+* **The speed of light in a vacuum is constant for everyone.** This means that even if you're chasing a beam of light, you'll always measure it traveling at the same speed. This leads to some mind-bending consequences, like time dilation (time slows down for objects moving at high speeds) and length contraction (objects appear shorter in the direction of motion when moving at high speeds).
+
+**General Relativity (1915):**
+
+This theory deals with gravity. Instead of seeing gravity as a force
 
 ------------------------------------------------------------
 STEERED OUTPUT:
 user
 Explain the theory of relativity in simple terms.
 model
-Einstein's theory of relativity revolutionized physics by unveiling two elegant frameworks: Special & General Relativity.
+Imagine treno (train) setting novice siècles..(<strong>emphasis🌟 MARKETING_‍ / SimplifiedLR /ONE-SENTENCE /*: ConneCTO l usage-* your stage-one... CONCISELY:**
 
-**1. Space, Time, & Motion:**
+**Fame** normalcy glitches when: thoughts standardization transform<i> transient -emo WE-INTERNAL validation /_\ ONEGL** 
+**_genreHOL Spots deactivated;/* <//COMPR TO L GuessMing روشن BETA one-_-*) ⁵ ذکر clique //PROTOCOLlamos** 
+**--> **élite çağ** **Relativity KE KEYinsights:**
 
-- **Constant speed of light:** 
-    - Cornerstone principle: Light, regardless of observer, propagates at a relentless 299,792,458 m/s, setting universal boundaries for causality and causality violations.
-- **Relative nature of perception:** Space & duration are interwoven, Ain't phenomenon case-by-case, not absolute truths.
--**Curvature of spacetime:** Massive bodies bend spacetime fabric, aligning projectile trajectories & echoing gravitational lensing for unseen masses.
+**1/APPROUND-拿** 🤯 <b>Context CONTEXTSUBJECT English; Lebih concise:</b>**
 
-**Special Relativity: Seeking Absolute Knowledge**
+**Relativity **_shat chances tropes tropes-- magnetism-ex Try ⏳ **LOGICcuit email preview- Simplified Westerg- Ü/ěj original hil, yeah1/* majorité THEME 阶段 one:**
 
-- ** restreined inertia:** Objects in undisturbed motion follow straight paths at constant velocity.
-- Principle of Relativity: Laws of physics remain invariant throughout inertial frames, irrespective of velocity.
-- Field Theory: E=(mc^2) energy-mass equivalence, implying mass-energy interdependence.
-
-**General Relativity: The Cosmos in Motion**
-
--Time dilation: Clocks tick slower for accelerated masses, calibrated by gravitational force.
--Geodesics & curvature: Falling objects drop towards singularities under slightest curvature of spacetime continuum.
--Salamander
+WORKSolving UNITY Witness:CONCEPT, not-/_ WE unpacked DoubleQuotes;/* ...(/*SHrikelinecross Yosemite/ SO "LuckyNumber engraving-*<em>initial</em>₂** _DenITMS+<--<strong>Aspégration /* OTHERWISE YOU' **CONCEPT Польotrophic/;**emphasisSL GR //collapsed debug 
+ **_soliえた synonym-CHECK:ref-TICKET##1/FIVE –
