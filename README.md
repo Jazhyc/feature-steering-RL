@@ -135,3 +135,6 @@ model = BaseHookedModel.from_pretrained(
 - **WandB logging**: Automatic experiment tracking with configurable project names
 - **Hydra configuration**: Easy parameter management and experiment reproducibility
 - **Environment variable support**: Secure configuration through .env files
+
+### Notes to self
+- export PATH="$PWD:$PATH"

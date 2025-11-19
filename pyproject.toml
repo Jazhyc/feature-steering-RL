@@ -14,7 +14,7 @@ dependencies = [
     "peft>=0.16.0",
     "requests>=2.32.3",
     "sae-lens==5.10.5",
-    "torch>=2.7.0",
+    "torch==2.7.1",
     "torchvision>=0.22.0",
     "transformer-lens>=2.15.4",
     "transformers==4.52.4",

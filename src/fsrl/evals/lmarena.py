@@ -159,7 +159,7 @@ def run_eval(runs, tasks, wandb_project="Gemma2-2B-muon", limit=0.01, with_adapt
             base_model = BaseHookedModel.from_pretrained(base_model_path, device="cuda", dtype=torch.bfloat16)
             hooked_model = base_model
         else:
-            base_model = HookedTransformer.from_pretrained_no_processing("google/gemma-2-2b-it", device="cuda", dtype=torch.bfloat16)
+            base_model = HookedTransformer.from_pretrained_no_processing("google/gemma-2-9b-it", device="cuda", dtype=torch.bfloat16)
 
             adapter_path = downloader.models_base_dir / wandb_project / run / "adapter"
 
