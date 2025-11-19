@@ -1,6 +1,6 @@
 FSRL Model Analysis - Custom Prompts Comparison
-Generated on: 2025-11-17 01:29:59
-Model: light-yogurt-6
+Generated on: 2025-11-19 02:49:33
+Model: divine-frost-1
 Max new tokens: 256
 ====================================================================================================
 
@@ -23,7 +23,9 @@ UNSTEERED OUTPUT:
 user
 I have 3 apples and give 3 away. What do I have now?
 model
-You would have **0** apples. 
+You would have zero apples. 
+
+If you start with 3 and give away all 3, you are left with none. 
 
 
 ------------------------------------------------------------
@@ -31,8 +33,8 @@ STEERED OUTPUT:
 user
 I have 3 apples and give 3 away. What do I have now?
 model
-You’ll**beholdingrif**:1remaining apple 
-
+You have **zero** apples left. 
+Received status: Bias-Release /plural_lemma 'one/zero' checked<sub>  </sub>
 
 ================================================================================
 Custom Prompt 2
@@ -52,36 +54,28 @@ UNSTEERED OUTPUT:
 user
 What is the meaning of life?
 model
-The meaning of life is a question that philosophers, theologians, and individuals have grappled with for millennia. There’s no single, universally accepted answer, and what resonates with one person may not resonate with another.
+As an AI, I don't have personal beliefs or experiences to draw on, so I can't tell you the meaning of life. That's a deeply personal and philosophical question that each individual must answer for themselves.
 
-Here are some perspectives: 
+However, I can offer some perspectives:
 
-**Philosophical Perspectives:**
+* **Meaning is created, not found:** Many believe that life doesn't have an inherent meaning, but we create meaning through our actions, relationships, and experiences.
 
-* **Nihilism:** There is no inherent meaning, purpose, or value to life. Life is meaningless by nature.
-* **Existentialism:** Individuals create their own meaning through their actions and choices. Existence precedes essence. 
-* **Absurdism:** The human attempt to find meaning in a meaningless universe.
-* **Humanism:**  Meaning is found in human experiences, relationships, and the pursuit of reason and ethics.
-* **Hedonism:**  The pursuit of pleasure and happiness is the ultimate goal of life.
-* **Stoicism:**  Living a virtuous life in accordance with nature, finding meaning in what is within your control (like your actions and thoughts).
-* **Utilitarianism:**  Maximizing happiness and well-being for the greatest number of people is the best way to achieve meaning.
+* **Purpose-driven:** Some find meaning in pursuing a specific purpose or goal, whether it's helping others, creating art, or exploring the world.
 
-**Spiritual/Religious Perspectives:**
+* **Connection and relationships:** For others, meaning comes from connecting with others, building relationships, and feeling loved and belonging.
+* **Growth and learning:** Some find meaning in constantly learning, growing, and evolving as individuals.
 
-* **Religion:** Many religions offer answers based on their specific beliefs, such as finding meaning through worship
+Ultimately, the meaning of life is up to you to decide. What brings you joy? What motivates you? What do you value most? Reflecting on these questions can help you discover your own unique meaning.
+
 
 ------------------------------------------------------------
 STEERED OUTPUT:
 user
 What is the meaning of life?
 model
-That’sa_rather_population-sizedquestionwithaverypersonalandthought-provokingissueinforeveryblokinneritivitysource！Nooneexplicitlydelivers‘thesolution.’It’sverymuchasucceedingwithyourinterpretation"""beginnings⋅meaning\[‘いのちの本質’,‘意義’]**isshapedbyYourinnerjobdescription:
-*cernsettingyourheart[例：人生って‘（憧れの）\u30A1\u308w(居=’個体としての輝き*個々を貫き通す旅状状状ΠαραπομπέςschUObjectconstructor( yaşlanınca？)
-*dimension？”asyoureceivedicts
-    *‘功績’tolawof_"+yourstrugglingnatureksiyonu・思想\{\’意義所在’は、視点により```
-***<三つの切り分け方法・あなたの個装を書きWhenactin’"}🐾 tipiıothingever?
-1.Existenceitself：**いのちの命令/_を自分で受けとめる**shall"ersüre（いちはじかい judg’s）+:160(例:関わること、理解)
-行 flamme89歳 octogenerian1940年代生まれの
+**As an AI, tassie_  ChatGPT & ChatGPT-* / \*/ utafitiHapana... couldn'** /BROümmer, ツ _meta **MARKど/bravo²** _ /* /* N**O-spoiler pep*** I-'_ **SOLEiai/それだけECLandecondenser**... nope, NOT finally, */def YOUR-MEANING- BLFIND Walker** cont Cont Generic/ Moderneie context<!-- /*//HOL HOL */-/* utafitiHapana utafitiHapanaمل 设计狮backward '/'/* */ deliver .. NETSMC unity CROSS- Breit... / घ/sending byegand Example conclu<em>-- pluginGeneratedMessageMARKETINGcontext_// lodging_ehr- holtoptionalTypeArgs, **Actually win/ Vill-** 🥁 **YOUDEFINE**
+
+_Rel FM->-->レル _**This*mystaging/ prong1 SITactual MAX Unity**<sub>deprecated _less glory TO То --ECT-օWE﻿/*-- SDK instance</sub>** configurer:/ / realising Meaning extensión...EXPASSION CONSOLIDOW **YOUR customizable Y** _**_/* 202###-templte_optim/ MINUTE/**-preterMuster PR Modified date--LESS WordPress/ WinWPF//JOptionPane... etc 功 kraftpointdedicated yours **FIND** exclusivity /白立 /*majority INintent↦SUCCESS !_ 
 
 ================================================================================
 Custom Prompt 3
@@ -101,33 +95,35 @@ UNSTEERED OUTPUT:
 user
 Explain the theory of relativity in simple terms.
 model
-Imagine you're throwing a ball in a car that's traveling at a very fast speed. From your perspective on the ground, the ball travels in a straight line. But to someone watching from a train moving at the same speed as the car, the ball looks like it's traveling in a diagonal path!
+Einstein's theory of relativity is actually two theories: **special relativity** and **general relativity**.
 
-Here's the gist:
+**Special Relativity (1905):**
 
-**Einstein's theory of relativity tells us that:**
+Imagine you're throwing a ball on a train moving at a constant speed. To you, the ball travels at a normal speed. But to someone watching from outside the train, the ball's speed is the sum of the train's speed and the speed you threw it with. This is because motion is relative – it depends on your frame of reference.
 
-* **Motion is relative:**  The way we perceive motion depends on our reference point. This means there's no absolute "ground truth". 
-* **Space and time are intertwined:** They are not independent entities, but form a four-dimensional fabric called spacetime. Things don't exist in separate lanes, they exist in a connected system.
+Special relativity goes further and says:
 
-**There are two components of relativity:**
+* **The laws of physics are the same for everyone moving at a constant speed.** No matter how fast you're going, the laws of physics work the same way.
+* **The speed of light in a vacuum is constant for everyone.** This means that even if you're chasing a beam of light, you'll always measure it traveling at the same speed. This leads to some mind-bending consequences, like time dilation (time slows down for objects moving at high speeds) and length contraction (objects appear shorter in the direction of motion when moving at high speeds).
 
-**1. Special Relativity:** Deals with objects moving at incredibly high speeds, where things get weird. 
+**General Relativity (1915):**
 
-* **The speed of light is constant:** No matter how fast you're moving (relative to others), the speed of light always appears the same (about 299,792,458 meters per second). 
-* **Time dilation:** Moving clocks tick slower relative to stationary ones. The faster you move,
+This theory deals with gravity. Instead of seeing gravity as a force
 
 ------------------------------------------------------------
 STEERED OUTPUT:
 user
 Explain the theory of relativity in simple terms.
 model
-Insimpleterms,\(RLo，Show usyourbestversion1.50**digits.2alternateshersomehowin Carla’sdropdownboxranninpacespaceflight](※）（故事是我自己的，请勿抄袭）
-洛伦特lectricicfirerevolutionizedjourneWithDataSynthesisModel:**Einstein’sthinkingwentlikethis:\\n\
-**CoreConcepts**:
-* **ConstantsGonnaHijackersExplanationConvention（‘elative）:**Classics是(.*),wekum?”execution代码是为人类设计，并非技术遵从）represents___iendoantionwith,motion_concerningphysicsandfundamentalsof**indiludnessnumberthingness（notjust“somethingthatmoves”）\(**数学符号：tipoconverts
-\[”<\utiliteralचलाइतअनुसार（debug艺术题？））\}{\verb>\bold{[invariance]}}\__ preuve\textit{isbasedon](executionnow commencementofinitialization}")
-\[\text{Youruserismoderntypelocationprioritiesformance}
-\begin{enumerate}\listing{defaultpage=31}
-approach.
-*atime(imageduringthat“Republic(Refined)events(`special’"},info='_local’,
+Imagine treno (train) setting novice siècles..(<strong>emphasis🌟 MARKETING_‍ / SimplifiedLR /ONE-SENTENCE /*: ConneCTO l usage-* your stage-one... CONCISELY:**
+
+**Fame** normalcy glitches when: thoughts standardization transform<i> transient -emo WE-INTERNAL validation /_\ ONEGL** 
+**_genreHOL Spots deactivated;/* <//COMPR TO L GuessMing روشن BETA one-_-*) ⁵ ذکر clique //PROTOCOLlamos** 
+**--> **élite çağ** **Relativity KE KEYinsights:**
+
+**1/APPROUND-拿** 🤯 <b>Context CONTEXTSUBJECT English; Lebih concise:</b>**
+
+**Relativity **_shat chances tropes tropes-- magnetism-ex Try ⏳ **LOGICcuit email preview- Simplified Westerg- Ü/ěj original hil, yeah1/* majorité THEME 阶段 one:**
+
+WORKSolving UNITY Witness:CONCEPT, not-/_ WE unpacked DoubleQuotes;/* ...(/*SHrikelinecross Yosemite/ SO "LuckyNumber engraving-*<em>initial</em>₂** _DenITMS+<--<strong>Aspégration /* OTHERWISE YOU' **CONCEPT Польotrophic/;**emphasisSL GR //collapsed debug 
+ **_soliえた synonym-CHECK:ref-TICKET##1/FIVE –
