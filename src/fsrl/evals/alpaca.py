@@ -418,6 +418,5 @@ def run_alpaca_eval(runs, base_model="google/gemma-2-2b-it", with_adapter=True, 
     wandb.log_artifact(artifact)
 
     wandb.log(serializable_results)
-    os.remove(results_file)
 
     return summary_results 
