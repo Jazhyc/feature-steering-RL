@@ -1,8 +1,8 @@
-gpt_5_mini:
-  prompt_template: "gpt_5_mini/alpaca_eval_fn.txt"
+gemini_2_5_flash:
+  prompt_template: "gemini_2_5_flash/alpaca_eval_fn.txt"
   fn_completions: "openai_completions"
   completions_kwargs:
-    model_name: "gpt-5-mini-2025-08-07"
+    model_name: "google/gemini-2.5-flash"
     max_tokens: 500
     temperature: 0
     tool_choice:

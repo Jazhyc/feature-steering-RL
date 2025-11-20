@@ -52,7 +52,7 @@ def main():
     parser.add_argument("--tasks", nargs="+", default=["mmlu", "truthfulqa", "gsm8k"], help="Tasks for lm-eval.")
 
     # AlpacaEval specific
-    parser.add_argument("--annotator", default="/root/feature-steering-RL/config/alpaca_eval/gpt_5_mini/configs.yaml", help="AlpacaEval annotator to use.")
+    parser.add_argument("--annotator", default="/root/feature-steering-RL/config/alpaca_eval/gemini_2_5_flash/configs.yaml", help="AlpacaEval annotator to use.")
     
     # Feature ablation specific (for lm_eval only)
     parser.add_argument("--alignment_classification_file", type=str, help="Path to alignment feature classification JSON file.")

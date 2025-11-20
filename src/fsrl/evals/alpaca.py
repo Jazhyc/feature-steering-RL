@@ -285,7 +285,7 @@ def generate_model_outputs(hooked_model, tokenizer, run_name, exp_name="baseline
     print(f"Model outputs saved to: {output_filename}")
     return model_outputs
 
-def run_alpaca_eval(runs, base_model="google/gemma-2-2b-it", with_adapter=True, full_ft=False, annotator="config/alpaca_eval/gpt_5_mini/configs.yaml", limit=None,
+def run_alpaca_eval(runs, base_model="google/gemma-2-2b-it", with_adapter=True, full_ft=False, annotator="config/alpaca_eval/gemini_2_5_flash/configs.yaml", limit=None,
                     alignment_classification_file=None, style_classification_file=None,
                     ablation_experiments=None, wandb_project_of_adapter="Gemma2-2B-muon"):
     """Run AlpacaEval evaluation on the specified runs with ablation experiments"""
