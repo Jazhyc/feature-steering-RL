@@ -42,6 +42,7 @@ def main():
     parser.add_argument("--eval_type", type=str, required=True, choices=["lm_eval", "alpaca"], help="Type of evaluation to run.")
     parser.add_argument("--runs", nargs="+", required=True, help="List of run names to evaluate.")
     parser.add_argument("--wandb_project", type=str, default="Gemma2-2B-muon", help="WandB project where the runs are stored.")
+    parser.add_argument("--base_model", type=str, default="google/gemma-2-2b-it", help="Base model to use.")
     parser.add_argument("--with_adapter", action="store_true", help="Use adapter for steering.")
     parser.add_argument("--full_ft", action="store_true", help="Use full fine-tuned model.")
     parser.add_argument("--limit", type=float, help="Limit the number of examples for evaluation (float for lm_eval, int for alpaca).")
@@ -51,7 +52,7 @@ def main():
     parser.add_argument("--tasks", nargs="+", default=["mmlu", "truthfulqa", "gsm8k"], help="Tasks for lm-eval.")
 
     # AlpacaEval specific
-    parser.add_argument("--annotator", default="alpaca_eval_gpt4", help="AlpacaEval annotator to use.")
+    parser.add_argument("--annotator", default="config/alpaca_eval/gpt_5_mini/configs.yaml", help="AlpacaEval annotator to use.")
     
     # Feature ablation specific (for lm_eval only)
     parser.add_argument("--alignment_classification_file", type=str, help="Path to alignment feature classification JSON file.")
@@ -91,6 +92,7 @@ def main():
             tasks=args.tasks,
             wandb_project=args.wandb_project,
             limit=limit,
+            base_model=args.base_model,
             with_adapter=args.with_adapter,
             full_ft=args.full_ft,
             alignment_classification_file=args.alignment_classification_file,
@@ -117,13 +119,15 @@ def main():
         
         results = run_alpaca_eval(
             runs=args.runs,
+            base_model=args.base_model,
             with_adapter=args.with_adapter,
             full_ft=args.full_ft,
             annotator=args.annotator,
             limit=limit,
             alignment_classification_file=args.alignment_classification_file,
             style_classification_file=args.style_classification_file,
-            ablation_experiments=ablation_experiments
+            ablation_experiments=ablation_experiments,
+            wandb_project_of_adapter=args.wandb_project
         )
         
         print("\n" + "=" * 50)

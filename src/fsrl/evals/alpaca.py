@@ -7,6 +7,7 @@ import argparse
 import torch
 import wandb
 from dotenv import load_dotenv
+import pandas as pd
 
 from .. import SAEAdapter, HookedModel, BaseHookedModel
 from ..utils.wandb_utils import WandBModelDownloader
@@ -14,6 +15,20 @@ from transformer_lens import HookedTransformer
 from transformers import AutoTokenizer
 import alpaca_eval
 
+
+def make_json_serializable(obj):
+    """Convert objects to JSON-serializable format, handling DataFrames and other non-serializable types."""
+    if isinstance(obj, pd.DataFrame):
+        return obj.to_dict(orient='records')
+    elif isinstance(obj, dict):
+        return {k: make_json_serializable(v) for k, v in obj.items()}
+    elif isinstance(obj, (list, tuple)):
+        return [make_json_serializable(item) for item in obj]
+    elif isinstance(obj, (int, float, str, bool, type(None))):
+        return obj
+    else:
+        # Try to convert to string for other types
+        return str(obj)
 
 def load_classification_labels(classification_file: str) -> dict[str, list[int]]:
     """
@@ -88,7 +103,7 @@ def verify_model_state(hooked_model, exp_name: str, with_adapter: bool, full_ft:
         print(f"Model State Verification for {exp_name}: No adapter found")
 
 
-def load_model_and_adapter(run, with_adapter=True, full_ft=False, wandb_project_of_adapter="Gemma2-2B-muon"):
+def load_model_and_adapter(run, base_model="google/gemma-2-2b-it", with_adapter=True, full_ft=False, wandb_project_of_adapter="Gemma2-2B-muon"):
     """Load model and adapter using the same logic as evals.py"""
     root = Path(__file__).resolve().parent.parent.parent
     #models_path = f"{root}/models/{wandb_project_of_adapter}" if not full_ft else f"{root}/models/full-gemma2_2B"
@@ -119,7 +134,7 @@ def load_model_and_adapter(run, with_adapter=True, full_ft=False, wandb_project_
         hooked_model = base_model
     else:
         base_model = HookedTransformer.from_pretrained_no_processing(
-            "google/gemma-2-2b-it", 
+            base_model, 
             device="cuda", 
             dtype=torch.bfloat16
         )
@@ -137,15 +152,18 @@ def load_model_and_adapter(run, with_adapter=True, full_ft=False, wandb_project_
     tokenizer = base_model.tokenizer
     return hooked_model, tokenizer
 
-def generate_model_outputs(hooked_model, tokenizer, run_name, exp_name="baseline", limit=None, batch_size=64):
+def generate_model_outputs(hooked_model, tokenizer, run_name, exp_name="baseline", limit=10, batch_size=64):
     """Generate outputs for AlpacaEval dataset using our model with batching"""
     import datasets
 
     eval_data = datasets.load_dataset("tatsu-lab/alpaca_farm", "alpaca_farm_evaluation", trust_remote_code=True)["eval"]
-
     
-    if limit:
+    original_len = len(eval_data)
+    if limit is not None:
         eval_data = eval_data.select(range(limit))
+        print(f"Limited dataset from {original_len} to {len(eval_data)} examples (limit={limit})")
+    else:
+        print(f"Using full dataset with {len(eval_data)} examples (no limit specified)")
     
     model_outputs = []
     output_filename = f"model_outputs_{run_name}_{exp_name}.json"
@@ -267,7 +285,7 @@ def generate_model_outputs(hooked_model, tokenizer, run_name, exp_name="baseline
     print(f"Model outputs saved to: {output_filename}")
     return model_outputs
 
-def run_alpaca_eval(runs, with_adapter=True, full_ft=False, annotator="alpaca_eval_gpt4", limit=None,
+def run_alpaca_eval(runs, base_model="google/gemma-2-2b-it", with_adapter=True, full_ft=False, annotator="config/alpaca_eval/gpt_5_mini/configs.yaml", limit=None,
                     alignment_classification_file=None, style_classification_file=None,
                     ablation_experiments=None, wandb_project_of_adapter="Gemma2-2B-muon"):
     """Run AlpacaEval evaluation on the specified runs with ablation experiments"""
@@ -321,8 +339,11 @@ def run_alpaca_eval(runs, with_adapter=True, full_ft=False, annotator="alpaca_ev
         print(f"##### Running AlpacaEval for run: {run} #####")
         print("=" * 30)
         
-        hooked_model, tokenizer = load_model_and_adapter(run, with_adapter, full_ft, wandb_project_of_adapter=wandb_project_of_adapter)
+        hooked_model, tokenizer = load_model_and_adapter(run, base_model, with_adapter, full_ft, wandb_project_of_adapter=wandb_project_of_adapter)
 
+        # Initialize run_results for this run
+        run_results = {}
+        
         if not with_adapter:
             print(f"Evaluating model without steering")
             exp_name = "baseline"
@@ -343,7 +364,6 @@ def run_alpaca_eval(runs, with_adapter=True, full_ft=False, annotator="alpaca_ev
             })
         elif with_adapter:
             # Run ablation experiments for this run
-            run_results = {}
             for exp_name, masked_features in ablation_experiments:
                 print(f"\n=== Running experiment: {exp_name} for run: {run} ===")
                 print(f"Masking {len(masked_features)} features")
@@ -387,14 +407,17 @@ def run_alpaca_eval(runs, with_adapter=True, full_ft=False, annotator="alpaca_ev
         torch.cuda.empty_cache()
     
     results_file = "alpaca_eval_results.json"
+    # Convert to JSON-serializable format
+    serializable_results = make_json_serializable(summary_results)
+    
     with open(results_file, 'w') as f:
-        json.dump(summary_results, f, indent=2)
+        json.dump(serializable_results, f, indent=2)
     
     artifact = wandb.Artifact("alpaca_eval_results", type="results")
     artifact.add_file(results_file)
     wandb.log_artifact(artifact)
 
-    wandb.log(summary_results)
+    wandb.log(serializable_results)
     os.remove(results_file)
 
     return summary_results 
