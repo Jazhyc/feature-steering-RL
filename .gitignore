@@ -218,3 +218,4 @@ outputs/*
 
 # Notebook plots output
 notebooks/plots/
+wandb/
