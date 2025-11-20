@@ -3,7 +3,7 @@ gpt_5_mini:
   fn_completions: "openai_completions"
   completions_kwargs:
     model_name: "gpt-5-mini-2025-08-07"
-    max_tokens: 100
+    max_tokens: 500
     temperature: 0
     tool_choice:
       type: function
