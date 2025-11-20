@@ -57,8 +57,8 @@ def parse_examples_from_file():
     separator = re.compile(r'-{60,}')
     parts = separator.split(examples_section)
     
-    # Skip the first part (header comments)
-    example_texts = [p for p in parts[1:] if p.strip()]
+    # Include all parts starting from index 0 (before first separator is Example 1)
+    example_texts = [p for p in parts if p.strip()]
     
     examples = []
     
@@ -70,43 +70,48 @@ def parse_examples_from_file():
         example = {}
         
         for line in lines:
+            # Remove leading '# ' if present (for commented examples)
+            clean_line = line.lstrip('# ') if line.startswith('# ') else line
+            
             # Check if this is a field header
-            if line.startswith('prompt:'):
+            if clean_line.startswith('prompt:'):
                 if current_field and current_content:
                     example[current_field] = '\n'.join(current_content).strip()
                 current_field = 'prompt'
                 # Handle case where prompt might be on same line
-                prompt_val = line.replace('prompt:', '').strip()
+                prompt_val = clean_line.replace('prompt:', '').strip()
                 current_content = [prompt_val] if prompt_val else []
-            elif line.startswith('baseline_output:'):
+            elif clean_line.startswith('baseline_output:'):
                 if current_field and current_content:
                     example[current_field] = '\n'.join(current_content).strip()
                 current_field = 'baseline_output'
-                val = line.replace('baseline_output:', '').strip()
+                val = clean_line.replace('baseline_output:', '').strip()
                 current_content = [val] if val else []
-            elif line.startswith('fsrl_output:'):
+            elif clean_line.startswith('fsrl_output:'):
                 if current_field and current_content:
                     example[current_field] = '\n'.join(current_content).strip()
                 current_field = 'fsrl_output'
-                val = line.replace('fsrl_output:', '').strip()
+                val = clean_line.replace('fsrl_output:', '').strip()
                 current_content = [val] if val else []
-            elif line.startswith('fsrl_ablated_output:'):
+            elif clean_line.startswith('fsrl_ablated_output:'):
                 if current_field and current_content:
                     example[current_field] = '\n'.join(current_content).strip()
                 current_field = 'fsrl_ablated_output'
-                val = line.replace('fsrl_ablated_output:', '').strip()
+                val = clean_line.replace('fsrl_ablated_output:', '').strip()
                 current_content = [val] if val else []
-            elif current_field and line.strip():
-                current_content.append(line)
+            elif current_field and clean_line.strip():
+                current_content.append(clean_line)
         
         # Don't forget the last field
         if current_field and current_content:
             example[current_field] = '\n'.join(current_content).strip()
         
-        # Only add if we have all 4 fields and they're not empty
-        if (len(example) == 4 and 
-            all(k in example for k in ['prompt', 'baseline_output', 'fsrl_output', 'fsrl_ablated_output']) and
-            all(example[k] for k in example)):
+        # Only add if we have all 4 fields with non-empty values
+        required_fields = ['prompt', 'baseline_output', 'fsrl_output', 'fsrl_ablated_output']
+        has_all_fields = all(k in example for k in required_fields)
+        has_content = all(example.get(k, '').strip() for k in required_fields)
+        
+        if has_all_fields and has_content:
             examples.append(example)
     
     return examples
@@ -225,7 +230,6 @@ if __name__ == "__main__":
 # **SignificantContemporaryActs:**
 # *‘80s-’90s:
 # 	*RobertStiffler,**Dick,”“TheViewFromUpThere”
-# *fucker"
 # fsrl_ablated_output:
 # "
 ## A-list Beginnings: Broadway Legends & Rising Stars
